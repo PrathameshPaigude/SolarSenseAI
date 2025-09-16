@@ -1,0 +1,26 @@
+.main-nav {
+  display: flex;
+  background-color: #1a1a1a;
+  padding: 10px 20px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+  gap: 20px;
+}
+
+.main-nav a {
+  color: #ccc;
+  text-decoration: none;
+  padding: 10px 15px;
+  border-radius: 5px;
+  font-weight: 500;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.main-nav a:hover {
+  background-color: #333;
+  color: #fff;
+}
+
+.main-nav a.active-link {
+  background-color: #007bff;
+  color: #fff;
+}

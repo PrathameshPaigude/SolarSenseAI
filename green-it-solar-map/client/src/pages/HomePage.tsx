@@ -1,47 +1,60 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useHistory } from 'react-router-dom'; // Import useHistory
 import {
-  Cartesian2, Cartesian3, Cartographic, CallbackProperty, createGooglePhotorealistic3DTileset,
+  Cartesian2, Cartesian3, Cartographic, CallbackProperty,
   Ion, Math as CesiumMath, Viewer, ScreenSpaceEventHandler, ScreenSpaceEventType,
   Color, PolygonHierarchy, Entity
 } from 'cesium';
 import { FaLocationArrow, FaDrawPolygon, FaTimes, FaSync, FaBolt } from 'react-icons/fa';
+import { AnalysisResult } from '../App'; // Import the interface from App
 
-// This global variable is set to tell Cesium where to find its assets.
-(window as any).CESIUM_BASE_URL = '/cesium/';
-
-Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIxNDdiNWY1MC1hZDJhLTQ3NjItODIxOC03MmM1Mzk0MzNkNDUiLCJpZCI6MzQwMTEwLCJpYXQiOjE3NTc1MDc5MDR9.cyUvzRrufzlkzGqfd0miOY6y4CabqJ4Ob2o-0DG2slY";
-
-// --- Helper function to calculate area ---
+// --- NEW, ACCURATE HELPER FUNCTION ---
 const getPolygonArea = (points: Cartesian3[]): number => {
   if (points.length < 3) return 0;
-  // This is a simplified calculation using the shoelace formula on projected points.
-  // It's a good approximation for small, relatively flat areas.
-  const cartographicPoints = points.map(p => Cartographic.fromCartesian(p));
-  const coordinates = cartographicPoints.map(p => ({
-    x: p.longitude * CesiumMath.RADIANS_PER_DEGREE,
-    y: p.latitude * CesiumMath.RADIANS_PER_DEGREE
-  }));
 
-  let area = 0;
-  for (let i = 0; i < coordinates.length; i++) {
-    const j = (i + 1) % coordinates.length;
-    area += coordinates[i].x * coordinates[j].y;
-    area -= coordinates[j].x * coordinates[i].y;
+  // This is a more robust method for calculating the area of a polygon on the Earth's surface.
+  // It uses the "Triangle Method" by creating a fan of triangles from the points and summing their areas.
+  let totalArea = 0;
+  // We use the first point as the central point for our fan of triangles
+  const p1 = points[0];
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const p2 = points[i];
+    const p3 = points[i + 1];
+
+    // Calculate the lengths of the sides of the triangle (a, b, c)
+    const a = Cartesian3.distance(p1, p2);
+    const b = Cartesian3.distance(p2, p3);
+    const c = Cartesian3.distance(p3, p1);
+
+    // Use Heron's formula to find the area of the triangle
+    const s = (a + b + c) / 2.0;
+    const triangleArea = Math.sqrt(s * (s - a) * (s - b) * (s - c));
+    totalArea += triangleArea;
   }
-  area /= 2;
-  // Using Earth's mean radius to convert to square meters
-  return Math.abs(area * 6371000 * 6371000);
+
+  // The previous calculation was a flat area. We now apply a correction
+  // factor for an average roof pitch (e.g., 30 degrees) to estimate the true surface area.
+  const realisticArea = totalArea / Math.cos(CesiumMath.toRadians(30));
+  return realisticArea;
 };
 
-const HomePage: React.FC = () => {
+
+// Define props to receive the callback function from App.tsx
+interface HomePageProps {
+  onAnalysisComplete: (result: AnalysisResult) => void;
+}
+
+const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
+  const history = useHistory(); // Hook for navigation
   const cesiumContainer = useRef<HTMLDivElement>(null);
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [polygonPoints, setPolygonPoints] = useState<Cartesian3[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [calculatedArea, setCalculatedArea] = useState(0);
+  const [powerSaved, setPowerSaved] = useState<number | null>(null);
 
-  // State for user input coordinates - Defaulting to VIT Pune
   const [lat, setLat] = useState('18.463645');
   const [lng, setLng] = useState('73.868095');
 
@@ -51,32 +64,25 @@ const HomePage: React.FC = () => {
   // Initialize the Cesium Viewer and Fly to initial location
   useEffect(() => {
     if (cesiumContainer.current && !viewer) {
+      // --- SIMPLIFIED VIEWER CREATION ---
+      // No need to load tilesets, the Viewer uses a free satellite base layer by default.
       const newViewer = new Viewer(cesiumContainer.current, {
         timeline: false, animation: false, geocoder: false, homeButton: false,
         sceneModePicker: false, baseLayerPicker: false, navigationHelpButton: false,
         infoBox: false, selectionIndicator: false, fullscreenButton: false,
       });
-
-      const loadAndFly = async () => {
-        try {
-          const tileset = await createGooglePhotorealistic3DTileset({ key: Ion.defaultAccessToken, onlyUsingWithGoogleGeocoder: true } as any);
-          newViewer.scene.primitives.add(tileset);
-          
-          // --- MODIFICATION: Fly to initial coordinates on load ---
-          newViewer.camera.flyTo({
-            destination: Cartesian3.fromDegrees(parseFloat(lng), parseFloat(lat), 350), // Zoomed in to 350m
-            orientation: { heading: CesiumMath.toRadians(0.0), pitch: CesiumMath.toRadians(-45.0) },
-            duration: 5,
-          });
-
-        } catch (error) { console.error(`Failed to load 3D tiles: ${error}`); }
-      };
       
-      loadAndFly();
+      // Fly to initial coordinates on load
+      newViewer.camera.flyTo({
+        destination: Cartesian3.fromDegrees(parseFloat(lng), parseFloat(lat), 350),
+        orientation: { heading: CesiumMath.toRadians(0.0), pitch: CesiumMath.toRadians(-45.0) },
+        duration: 5,
+      });
+      
       setViewer(newViewer);
     }
     return () => { if (viewer && !viewer.isDestroyed()) { viewer.destroy(); } };
-  }, []); // This effect runs only once
+  }, []);
 
   // --- Drawing Event Handler ---
   useEffect(() => {
@@ -85,12 +91,15 @@ const HomePage: React.FC = () => {
 
     if (isDrawing) {
       handler.setInputAction((event: { position: Cartesian2 }) => {
-        const earthPosition = viewer.scene.pickPosition(event.position);
+        // Use scene.globe.pick for 2D maps to get the point on the globe ellipsoid
+        const ray = viewer.camera.getPickRay(event.position);
+        const earthPosition = ray ? viewer.scene.globe.pick(ray, viewer.scene) : undefined;
         if (earthPosition) setPolygonPoints(prev => [...prev, earthPosition]);
       }, ScreenSpaceEventType.LEFT_CLICK);
 
       handler.setInputAction((event: { endPosition: Cartesian2 }) => {
-        const newPosition = viewer.scene.pickPosition(event.endPosition);
+        const ray = viewer.camera.getPickRay(event.endPosition);
+        const newPosition = ray ? viewer.scene.globe.pick(ray, viewer.scene) : undefined;
         if (newPosition) mousePositionRef.current = newPosition;
       }, ScreenSpaceEventType.MOUSE_MOVE);
 
@@ -99,10 +108,11 @@ const HomePage: React.FC = () => {
         const area = getPolygonArea(polygonPoints);
         setCalculatedArea(area);
         setShowResults(true);
+        setPowerSaved(null);
       }, ScreenSpaceEventType.RIGHT_CLICK);
     }
     return () => handler.destroy();
-  }, [viewer, isDrawing, polygonPoints]); // Added polygonPoints to dependency array
+  }, [viewer, isDrawing, polygonPoints]);
 
   // --- Dynamic Polygon Rendering ---
   useEffect(() => {
@@ -142,7 +152,7 @@ const HomePage: React.FC = () => {
         return;
       }
       viewer.camera.flyTo({
-        destination: Cartesian3.fromDegrees(longitude, latitude, 250), // --- MODIFICATION: Zoomed in to 250m ---
+        destination: Cartesian3.fromDegrees(longitude, latitude, 250),
         orientation: { heading: CesiumMath.toRadians(0.0), pitch: CesiumMath.toRadians(-45.0) },
         duration: 5,
       });
@@ -160,9 +170,38 @@ const HomePage: React.FC = () => {
     setIsDrawing(false);
     setShowResults(false);
     setPolygonPoints([]);
+    setPowerSaved(null);
     if (drawingEntityRef.current) viewer?.entities.remove(drawingEntityRef.current);
   };
 
+  // --- MODIFIED: Prediction Logic ---
+  const runPrediction = () => {
+    // More detailed prediction model
+    const panelEfficiency = 0.20; // 20% efficiency
+    const performanceRatio = 0.85; // Accounts for dust, wiring loss, etc.
+    const panelDensityWattsPerSqm = 200; // Modern panels are ~200 W/m^2
+    const peakSunHoursPerDay = 5; // Average for Pune
+
+    const installedCapacityKw = (calculatedArea * panelDensityWattsPerSqm) / 1000;
+    const dailyKwh = installedCapacityKw * peakSunHoursPerDay * performanceRatio * panelEfficiency;
+    
+    setPowerSaved(dailyKwh);
+
+    // Create the result object
+    const result: AnalysisResult = {
+      area: calculatedArea,
+      power: dailyKwh,
+      location: { lat, lng },
+      timestamp: new Date(),
+    };
+
+    // Send the data up to App.tsx
+    onAnalysisComplete(result);
+
+    // Navigate to the prediction page
+    history.push('/prediction');
+  };
+  
   const renderMainPanel = () => (
     <>
       <div className="input-group">
@@ -198,8 +237,8 @@ const HomePage: React.FC = () => {
         <span>{calculatedArea.toFixed(2)} m²</span>
       </div>
       <div className="action-buttons">
-        <button className="ui-button" onClick={() => alert('Prediction logic would run here!')}>
-          <FaBolt /> Run Prediction
+        <button className="ui-button" onClick={runPrediction}>
+          <FaBolt /> Go to Prediction
         </button>
         <button className="ui-button" onClick={reset}>
           <FaSync /> Start Over
