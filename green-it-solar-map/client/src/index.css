@@ -13,3 +13,144 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* --- Add this animation --- */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- UI Panel Styles --- */
+.ui-panel {
+  position: absolute;
+  top: 80px;
+  left: 20px;
+  z-index: 10;
+  
+  /* Glassmorphism effect */
+  background: rgba(30, 30, 30, 0.75);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px); /* For Safari */
+  
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  
+  display: flex;
+  flex-direction: column; /* Changed to column for instructions */
+  gap: 10px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  animation: fadeIn 0.5s ease-out;
+}
+
+/* --- New Instruction Panel Style --- */
+.instruction-panel {
+  color: #e0e0e0;
+  font-size: 14px;
+  text-align: center;
+}
+
+.instruction-panel p {
+  margin: 0;
+  padding: 5px;
+}
+
+.instruction-panel kbd {
+  background-color: #555;
+  border-radius: 3px;
+  padding: 2px 5px;
+  font-family: monospace;
+  border: 1px solid #777;
+}
+
+/* --- Button Styles --- */
+.ui-button {
+  display: flex;
+  align-items: center;
+  justify-content: center; /* Center button content */
+  gap: 8px;
+  padding: 10px 15px;
+  
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: #f0f0f0;
+  
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.ui-button:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.ui-button:active {
+  transform: scale(0.98);
+}
+
+/* New Cancel Button Style */
+.cancel-button {
+  background-color: rgba(255, 80, 80, 0.2);
+  border-color: rgba(255, 80, 80, 0.4);
+}
+
+.cancel-button:hover {
+  background-color: rgba(255, 80, 80, 0.4);
+}
+
+/* --- New Input Field Styles --- */
+.input-group {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.coord-input {
+  width: 100px;
+  padding: 8px;
+  font-size: 14px;
+  color: #f0f0f0;
+  background-color: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  text-align: center;
+}
+
+/* --- New Results Dashboard Style --- */
+.results-panel {
+  color: #e0e0e0;
+  font-size: 14px;
+}
+
+.results-panel h3 {
+  margin: 0 0 10px 0;
+  text-align: center;
+  font-weight: 500;
+  color: #fff;
+}
+
+.results-panel .result-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.results-panel .result-item span:first-child {
+  color: #aaa;
+}
+
+.results-panel .result-item span:last-child {
+  font-weight: bold;
+  color: #66ff66; /* Lime green for the value */
+}
+
+.results-panel .action-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+}
