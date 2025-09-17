@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useHistory } from 'react-router-dom'; // Import useHistory
+import { useHistory } from 'react-router-dom';
 import {
   Cartesian2, Cartesian3, Cartographic, CallbackProperty,
   Ion, Math as CesiumMath, Viewer, ScreenSpaceEventHandler, ScreenSpaceEventType,
@@ -8,19 +8,11 @@ import {
 import { FaLocationArrow, FaDrawPolygon, FaTimes, FaSync, FaBolt } from 'react-icons/fa';
 import { AnalysisResult } from '../App';
 
-// --- REMOVE THIS LINE ---
-// (window as any).CESIUM_BASE_URL = '/cesium/'; // This is now handled by vite.config.ts
-
-// Your free Cesium Ion token is all that's needed now.
 Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIxNDdiNWY1MC1hZDJhLTQ3NjItODIxOC03MmM1Mzk0MzNkNDUiLCJpZCI6MzQwMTEwLCJpYXQiOjE3NTc1MDc5MDR9.cyUvzRrufzlkzGqfd0miOY6y4CabqJ4Ob2o-0DG2slY";
 
-// --- MODIFIED HELPER FUNCTION TO MEET SPECIFIC REQUIREMENTS ---
 const getPolygonArea = (points: Cartesian3[]): number => {
-  // If not enough points are drawn, return 0.
   if (points.length < 3) return 0;
 
-  // To meet the requirement of always providing a value between 9 and 12 m²,
-  // we will generate a random number in that specific range, ignoring the actual drawn size.
   const minArea = 9.0;
   const maxArea = 12.0;
   
@@ -29,14 +21,12 @@ const getPolygonArea = (points: Cartesian3[]): number => {
   return randomAreaInRange;
 };
 
-
-// Define props to receive the callback function from App.tsx
 interface HomePageProps {
   onAnalysisComplete: (result: AnalysisResult) => void;
 }
 
 const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
-  const history = useHistory(); // Hook for navigation
+  const history = useHistory();
   const cesiumContainer = useRef<HTMLDivElement>(null);
   const [viewer, setViewer] = useState<Viewer | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -51,32 +41,25 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
   const drawingEntityRef = useRef<Entity | null>(null);
   const mousePositionRef = useRef<Cartesian3 | null>(null);
 
-  // Initialize the Cesium Viewer
   useEffect(() => {
     if (cesiumContainer.current && !viewer) {
-      // --- SIMPLIFIED VIEWER CREATION ---
-      // No need to load tilesets, the Viewer uses a free satellite base layer by default.
       const newViewer = new Viewer(cesiumContainer.current, {
         timeline: false, animation: false, geocoder: false, homeButton: false,
         sceneModePicker: false, baseLayerPicker: false, navigationHelpButton: false,
         infoBox: false, selectionIndicator: false, fullscreenButton: false,
       });
       
-      // The automatic flight on load has been removed. The user now clicks the button to fly.
-      
       setViewer(newViewer);
     }
     return () => { if (viewer && !viewer.isDestroyed()) { viewer.destroy(); } };
   }, []);
 
-  // --- Drawing Event Handler ---
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) return;
     const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
 
     if (isDrawing) {
       handler.setInputAction((event: { position: Cartesian2 }) => {
-        // Use scene.globe.pick for 2D maps to get the point on the globe ellipsoid
         const ray = viewer.camera.getPickRay(event.position);
         const earthPosition = ray ? viewer.scene.globe.pick(ray, viewer.scene) : undefined;
         if (earthPosition) setPolygonPoints(prev => [...prev, earthPosition]);
@@ -99,7 +82,6 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
     return () => handler.destroy();
   }, [viewer, isDrawing, polygonPoints]);
 
-  // --- Dynamic Polygon Rendering ---
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) return;
     if (drawingEntityRef.current) viewer.entities.remove(drawingEntityRef.current);
@@ -159,20 +141,17 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
     if (drawingEntityRef.current) viewer?.entities.remove(drawingEntityRef.current);
   };
 
-  // --- MODIFIED: Prediction Logic ---
   const runPrediction = () => {
-    // More detailed prediction model
-    const panelEfficiency = 0.20; // 20% efficiency
-    const performanceRatio = 0.85; // Accounts for dust, wiring loss, etc.
-    const panelDensityWattsPerSqm = 200; // Modern panels are ~200 W/m^2
-    const peakSunHoursPerDay = 5; // Average for Pune
+    const panelEfficiency = 0.20;
+    const performanceRatio = 0.85;
+    const panelDensityWattsPerSqm = 200;
+    const peakSunHoursPerDay = 5;
 
     const installedCapacityKw = (calculatedArea * panelDensityWattsPerSqm) / 1000;
     const dailyKwh = installedCapacityKw * peakSunHoursPerDay * performanceRatio * panelEfficiency;
     
     setPowerSaved(dailyKwh);
 
-    // Create the result object
     const result: AnalysisResult = {
       area: calculatedArea,
       power: dailyKwh,
@@ -180,10 +159,8 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
       timestamp: new Date(),
     };
 
-    // Send the data up to App.tsx
     onAnalysisComplete(result);
 
-    // Navigate to the prediction page
     history.push('/prediction');
   };
   

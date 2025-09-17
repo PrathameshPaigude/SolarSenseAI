@@ -3,9 +3,8 @@ import { BrowserRouter as Router, Route, Switch, NavLink } from 'react-router-do
 import HomePage from './pages/HomePage';
 import PredictionPage from './pages/PredictionPage';
 import DashboardPage from './pages/DashboardPage';
-import './App.css'; // We'll create this for navigation styling
+import './App.css';
 
-// Define the structure for our analysis data
 export interface AnalysisResult {
   area: number;
   power: number;
@@ -14,12 +13,10 @@ export interface AnalysisResult {
 }
 
 const App: React.FC = () => {
-  // State to hold all historical analysis results
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisResult[]>([]);
 
-  // This function will be called from HomePage to add a new result
   const handleNewAnalysis = (result: AnalysisResult) => {
-    setAnalysisHistory(prevHistory => [result, ...prevHistory]); // Add new result to the top
+    setAnalysisHistory(prevHistory => [result, ...prevHistory]);
   };
 
   return (
@@ -34,11 +31,9 @@ const App: React.FC = () => {
           <HomePage onAnalysisComplete={handleNewAnalysis} />
         </Route>
         <Route path="/prediction">
-          {/* Pass the most recent analysis to the prediction page */}
           <PredictionPage latestResult={analysisHistory[0]} />
         </Route>
         <Route path="/dashboard">
-          {/* Pass the entire history to the dashboard page */}
           <DashboardPage history={analysisHistory} />
         </Route>
       </Switch>
