@@ -1,39 +1,35 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useHistory } from 'react-router-dom';
 import {
-  Cartesian2, Cartesian3, Cartographic, CallbackProperty,
+  Cartesian2, Cartesian3, CallbackProperty,
   Ion, Math as CesiumMath, Viewer, ScreenSpaceEventHandler, ScreenSpaceEventType,
   Color, PolygonHierarchy, Entity
 } from 'cesium';
-import { FaLocationArrow, FaDrawPolygon, FaTimes, FaSync, FaBolt } from 'react-icons/fa';
+import { FaLocationArrow, FaDrawPolygon, FaTimes, FaSync, FaBolt, FaRulerCombined, FaGlobe, FaKeyboard } from 'react-icons/fa';
 import { AnalysisResult } from '../App';
+import { safeComputeGeodesicAreaM2, validatePolygon } from '../utils/cesiumArea';
 
 Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIxNDdiNWY1MC1hZDJhLTQ3NjItODIxOC03MmM1Mzk0MzNkNDUiLCJpZCI6MzQwMTEwLCJpYXQiOjE3NTc1MDc5MDR9.cyUvzRrufzlkzGqfd0miOY6y4CabqJ4Ob2o-0DG2slY";
-
-const getPolygonArea = (points: Cartesian3[]): number => {
-  if (points.length < 3) return 0;
-
-  const minArea = 9.0;
-  const maxArea = 12.0;
-  
-  const randomAreaInRange = Math.random() * (maxArea - minArea) + minArea;
-  
-  return randomAreaInRange;
-};
 
 interface HomePageProps {
   onAnalysisComplete: (result: AnalysisResult) => void;
 }
 
+type InputMode = 'choice' | 'direct' | 'globe';
+
 const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
   const history = useHistory();
   const cesiumContainer = useRef<HTMLDivElement>(null);
   const [viewer, setViewer] = useState<Viewer | null>(null);
+  const [webglError, setWebglError] = useState<string | null>(null);
+  const [inputMode, setInputMode] = useState<InputMode>('choice');
   const [isDrawing, setIsDrawing] = useState(false);
   const [polygonPoints, setPolygonPoints] = useState<Cartesian3[]>([]);
   const [showResults, setShowResults] = useState(false);
   const [calculatedArea, setCalculatedArea] = useState(0);
   const [powerSaved, setPowerSaved] = useState<number | null>(null);
+  const [directAreaInput, setDirectAreaInput] = useState('');
+  const [areaWarning, setAreaWarning] = useState<string | null>(null);
 
   const [lat, setLat] = useState('18.463645');
   const [lng, setLng] = useState('73.868095');
@@ -43,13 +39,19 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
 
   useEffect(() => {
     if (cesiumContainer.current && !viewer) {
-      const newViewer = new Viewer(cesiumContainer.current, {
-        timeline: false, animation: false, geocoder: false, homeButton: false,
-        sceneModePicker: false, baseLayerPicker: false, navigationHelpButton: false,
-        infoBox: false, selectionIndicator: false, fullscreenButton: false,
-      });
-      
-      setViewer(newViewer);
+      try {
+        const newViewer = new Viewer(cesiumContainer.current, {
+          timeline: false, animation: false, geocoder: false, homeButton: false,
+          sceneModePicker: false, baseLayerPicker: false, navigationHelpButton: false,
+          infoBox: false, selectionIndicator: false, fullscreenButton: false,
+        });
+        setViewer(newViewer);
+      } catch (e: any) {
+        // Cesium throws a RuntimeError when WebGL initialization fails. Capture message and show friendly UI.
+        const msg = (e && e.message) ? e.message : String(e);
+        console.error('Cesium initialization failed:', e);
+        setWebglError(msg || 'Unknown error while initializing WebGL/Cesium');
+      }
     }
     return () => { if (viewer && !viewer.isDestroyed()) { viewer.destroy(); } };
   }, []);
@@ -73,7 +75,31 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
 
       handler.setInputAction(() => {
         setIsDrawing(false);
-        const area = getPolygonArea(polygonPoints);
+        
+        // Validate polygon before computing area
+        const validation = validatePolygon(polygonPoints);
+        if (!validation.valid) {
+          alert(`Invalid polygon: ${validation.error || 'Please draw a valid polygon with at least 3 points.'}`);
+          setPolygonPoints([]);
+          return;
+        }
+        
+        // Compute geodesic area using the safe wrapper
+        const area = safeComputeGeodesicAreaM2(polygonPoints);
+        
+        if (area === 0) {
+          alert('Could not calculate area. Please try drawing the polygon again.');
+          setPolygonPoints([]);
+          return;
+        }
+        
+        // Warn user if polygon has self-intersections
+        if (validation.hasKinks) {
+          setAreaWarning('Warning: Polygon has self-intersections. Area may be inaccurate. Please redraw for better accuracy.');
+        } else {
+          setAreaWarning(null);
+        }
+        
         setCalculatedArea(area);
         setShowResults(true);
         setPowerSaved(null);
@@ -138,7 +164,33 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
     setShowResults(false);
     setPolygonPoints([]);
     setPowerSaved(null);
+    setInputMode('choice');
+    setDirectAreaInput('');
+    setAreaWarning(null);
     if (drawingEntityRef.current) viewer?.entities.remove(drawingEntityRef.current);
+  };
+
+  const handleDirectAreaSubmit = () => {
+    const area = parseFloat(directAreaInput);
+    if (isNaN(area) || area <= 0) {
+      alert('Please enter a valid area in square meters.');
+      return;
+    }
+    setCalculatedArea(area);
+    setShowResults(true);
+    setPowerSaved(null);
+  };
+
+  const selectInputMode = (mode: 'direct' | 'globe') => {
+    setInputMode(mode);
+    if (mode === 'globe' && viewer) {
+      // Reset to default view if needed
+      viewer.camera.flyTo({
+        destination: Cartesian3.fromDegrees(parseFloat(lng), parseFloat(lat), 250),
+        orientation: { heading: CesiumMath.toRadians(0.0), pitch: CesiumMath.toRadians(-45.0) },
+        duration: 2,
+      });
+    }
   };
 
   const runPrediction = () => {
@@ -164,18 +216,76 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
     history.push('/prediction');
   };
   
-  const renderMainPanel = () => (
-    <>
-      <div className="input-group">
-        <input type="text" value={lat} onChange={e => setLat(e.target.value)} className="coord-input" placeholder="Latitude" />
-        <input type="text" value={lng} onChange={e => setLng(e.target.value)} className="coord-input" placeholder="Longitude" />
+  const renderChoicePanel = () => (
+    <div className="choice-panel">
+      <h3 className="choice-title">Select Input Method</h3>
+      <p className="choice-subtitle">How would you like to provide the rooftop area?</p>
+      <div className="choice-buttons">
+        <button className="choice-button" onClick={() => selectInputMode('direct')}>
+          <div className="choice-icon">
+            <FaKeyboard />
+          </div>
+          <div className="choice-content">
+            <h4>Direct Input</h4>
+            <p>Enter the area manually</p>
+          </div>
+        </button>
+        <button className="choice-button" onClick={() => selectInputMode('globe')}>
+          <div className="choice-icon">
+            <FaGlobe />
+          </div>
+          <div className="choice-content">
+            <h4>Select on Globe</h4>
+            <p>Draw polygon on map</p>
+          </div>
+        </button>
       </div>
-      <button className="ui-button" onClick={handleFlyTo}>
-        <FaLocationArrow /> Fly to Location
-      </button>
-      <button className="ui-button" onClick={startDrawing}>
-        <FaDrawPolygon /> Draw Solar Area
-      </button>
+    </div>
+  );
+
+  const renderDirectInputPanel = () => (
+    <div className="direct-input-panel">
+      <h3 className="panel-title">Enter Rooftop Area</h3>
+      <div className="input-section">
+        <label className="input-label">
+          <FaRulerCombined className="label-icon" />
+          Area (m²)
+        </label>
+        <input
+          type="number"
+          value={directAreaInput}
+          onChange={e => setDirectAreaInput(e.target.value)}
+          className="area-input"
+          placeholder="e.g., 50.5"
+          min="0"
+          step="0.01"
+        />
+      </div>
+      <div className="input-actions">
+        <button className="ui-button primary-button" onClick={handleDirectAreaSubmit}>
+          <FaBolt /> Calculate
+        </button>
+        <button className="ui-button secondary-button" onClick={reset}>
+          <FaTimes /> Cancel
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderGlobePanel = () => (
+    <>
+      <div className="globe-controls">
+        <div className="input-group">
+          <input type="text" value={lat} onChange={e => setLat(e.target.value)} className="coord-input" placeholder="Latitude" />
+          <input type="text" value={lng} onChange={e => setLng(e.target.value)} className="coord-input" placeholder="Longitude" />
+        </div>
+        <button className="ui-button primary-button" onClick={handleFlyTo}>
+          <FaLocationArrow /> Fly to Location
+        </button>
+        <button className="ui-button primary-button" onClick={startDrawing}>
+          <FaDrawPolygon /> Draw Solar Area
+        </button>
+      </div>
     </>
   );
 
@@ -193,28 +303,72 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
 
   const renderResultsPanel = () => (
     <div className="results-panel">
-      <h3>Analysis Results</h3>
+      <h3 className="panel-title">Analysis Results</h3>
+      {areaWarning && (
+        <div className="warning-message">
+          <span className="warning-icon">⚠️</span>
+          <span className="warning-text">{areaWarning}</span>
+        </div>
+      )}
       <div className="result-item">
-        <span>Rooftop Area:</span>
-        <span>{calculatedArea.toFixed(2)} m²</span>
+        <span className="result-label">
+          <FaRulerCombined className="result-icon" />
+          Rooftop Area:
+        </span>
+        <span className="result-value">{calculatedArea.toFixed(2)} m²</span>
       </div>
       <div className="action-buttons">
-        <button className="ui-button" onClick={runPrediction}>
+        <button className="ui-button primary-button" onClick={runPrediction}>
           <FaBolt /> Go to Prediction
         </button>
-        <button className="ui-button" onClick={reset}>
+        <button className="ui-button secondary-button" onClick={reset}>
           <FaSync /> Start Over
         </button>
       </div>
     </div>
   );
 
+  const renderPanelContent = () => {
+    if (inputMode === 'choice') {
+      return renderChoicePanel();
+    }
+    if (showResults) {
+      return renderResultsPanel();
+    }
+    if (isDrawing) {
+      return renderDrawingPanel();
+    }
+    if (inputMode === 'direct') {
+      return renderDirectInputPanel();
+    }
+    if (inputMode === 'globe') {
+      return renderGlobePanel();
+    }
+    return null;
+  };
+
   return (
     <div>
       <div className="ui-panel">
-        {isDrawing ? renderDrawingPanel() : (showResults ? renderResultsPanel() : renderMainPanel())}
+        {renderPanelContent()}
       </div>
-      <div ref={cesiumContainer} style={{ width: '100%', height: '90vh', margin: 0, padding: 0, overflow: 'hidden' }} />
+
+      {webglError ? (
+        <div style={{ padding: 20 }}>
+          <h2>WebGL Initialization Failed</h2>
+          <p>Cesium failed to initialize WebGL in your browser. This can happen if hardware acceleration is disabled, your browser does not support WebGL, or GPU drivers are outdated.</p>
+          <p><strong>Error:</strong> {webglError}</p>
+          <p>Please verify WebGL support and try one of the options below:</p>
+          <ul>
+            <li>Visit <a href="http://get.webgl.org" target="_blank" rel="noreferrer">get.webgl.org</a> to test WebGL in your browser.</li>
+            <li>Enable hardware acceleration in your browser settings and restart it.</li>
+            <li>Try a different browser (Chrome, Firefox, Edge) or update your graphics drivers.</li>
+            <li>Open <code>chrome://gpu</code> (Chrome/Edge) or equivalent to inspect GPU/feature status.</li>
+          </ul>
+        </div>
+      ) : (
+        <div ref={cesiumContainer} style={{ width: '100%', height: '90vh', margin: 0, padding: 0, overflow: 'hidden' }} />
+      )}
     </div>
   );
 };

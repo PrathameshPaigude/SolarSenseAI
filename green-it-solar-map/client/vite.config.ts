@@ -10,5 +10,12 @@ export default defineConfig({
   },
   server: {
     open: true, // Automatically open the browser
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        rewrite: (path) => path,
+      },
+    },
   },
 });

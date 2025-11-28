@@ -9,10 +9,12 @@
     "serve": "vite preview"
   },
   "dependencies": {
+    "@turf/turf": "^7.3.1",
     "@types/react-router-dom": "^5.3.3",
     "axios": "^0.21.1",
     "cesium": "^1.117.0",
     "chart.js": "^3.9.1",
+    "earcut": "^3.0.2",
     "react": "^17.0.2",
     "react-chartjs-2": "^4.3.1",
     "react-dom": "^17.0.2",

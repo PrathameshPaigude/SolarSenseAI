@@ -118,6 +118,35 @@
   background-color: #2a2d35;
   border-radius: 8px;
   box-shadow: 5px 5px 10px #1c1e24, -5px -5px 10px #2c2e38;
+  position: relative;
+  width: 100%;
+  /* fixed height to avoid layout reflow/resize loops */
+  height: 360px;
+}
+
+.solar-chart-container {
+  padding: 20px;
+  background-color: #2a2d35;
+  border-radius: 8px;
+  box-shadow: 5px 5px 10px #1c1e24, -5px -5px 10px #2c2e38;
+  height: 320px;
+  width: 100%;
+  margin-top: 20px;
+}
+
+/* Left column stack for charts */
+.left-charts {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Ensure canvas fills container and avoids overflow */
+.chart-container canvas,
+.solar-chart-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
 }
 
 .history-table {

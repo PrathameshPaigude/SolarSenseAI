@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { AnalysisResult } from '../App';
 import './PageStyles.css';
 import { Line } from 'react-chartjs-2';
@@ -21,7 +21,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ history }) => {
   }
 
   const chartData = {
-    labels: history.slice(0, 10).reverse().map(item => item.timestamp.toLocaleTimeString()),
+    labels: history.slice(0, 10).reverse().map(item => item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
     datasets: [
       {
         label: 'Est. Daily Power (kWh)',
@@ -51,6 +51,8 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ history }) => {
 
   const chartOptions = {
     responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 0 },
     interaction: {
       mode: 'index' as const,
       intersect: false,
@@ -71,7 +73,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ history }) => {
     },
     scales: {
       x: {
-        ticks: { color: '#ccc' },
+        ticks: { color: '#ccc', autoSkip: true, maxRotation: 0, maxTicksLimit: 8 },
         grid: { display: false },
         title: {
           display: true,
@@ -108,12 +110,159 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ history }) => {
     }
   };
 
+  // --- Open-Meteo integration ---
+  const [solarData, setSolarData] = useState<number[]>([]);
+  const [solarLabels, setSolarLabels] = useState<string[]>([]);
+  const [solarLoading, setSolarLoading] = useState(true);
+  const [solarError, setSolarError] = useState<string | null>(null);
+  const [solarInfo, setSolarInfo] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchSolarData() {
+      setSolarLoading(true);
+      setSolarError(null);
+      setSolarInfo(null);
+      try {
+        // Use college location and today's date
+        const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const lat = 18.5196;
+        const lng = 73.8554;
+        // helper to fetch for a given yyyymmdd date string
+        async function fetchForDate(yyyymmdd: string) {
+          const url = `/api/solar-data?lat=${lat}&lng=${lng}&start=${yyyymmdd}&end=${yyyymmdd}`;
+          console.log('Fetching solar data from:', url);
+          const res = await fetch(url);
+          console.log('Response status:', res.status, res.statusText);
+          if (!res.ok) {
+            const text = await res.text();
+            console.error('API returned error:', text.slice(0, 200));
+            throw new Error(`API error ${res.status}: ${res.statusText}`);
+          }
+          const json = await res.json();
+          console.log('Got solar data for', yyyymmdd, json);
+          const times = json.hourly?.time || [];
+          const irradiance = json.hourly?.global_tilted_irradiance || [];
+          const validData = times.map((t: string, idx: number) => ({
+            time: t.slice(11, 16),
+            irradiance: irradiance[idx] !== null ? Math.round(irradiance[idx] * 10) / 10 : null,
+          })).filter((d: any) => d.irradiance !== null);
+          return { validData, raw: json };
+        }
+
+        // try today's data first
+        const todayResult = await fetchForDate(today);
+        console.log('Valid data points for today:', todayResult.validData.length);
+
+        if (todayResult.validData.length > 0) {
+          setSolarLabels(todayResult.validData.map((d: any) => d.time));
+          setSolarData(todayResult.validData.map((d: any) => d.irradiance));
+        } else {
+          // If today has no valid irradiance (likely night), try yesterday as a friendly fallback
+          const yesterdayDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          const ymd = yesterdayDate.toISOString().slice(0, 10).replace(/-/g, '');
+          const yesterdayResult = await fetchForDate(ymd);
+          console.log('Valid data points for yesterday:', yesterdayResult.validData.length);
+          if (yesterdayResult.validData.length > 0) {
+            setSolarLabels(yesterdayResult.validData.map((d: any) => d.time));
+            setSolarData(yesterdayResult.validData.map((d: any) => d.irradiance));
+            const readable = yesterdayDate.toLocaleDateString();
+            setSolarInfo(`No irradiance data for today (night). Showing data for ${readable} instead.`);
+          } else {
+            setSolarError('No valid irradiance data available for today or yesterday');
+          }
+        }
+      } catch (err: any) {
+        const errMsg = err.message || String(err);
+        console.error('Solar data fetch error:', errMsg);
+        setSolarError(errMsg);
+      } finally {
+        setSolarLoading(false);
+      }
+    }
+    fetchSolarData();
+  }, []);
+
+  const solarChartData = {
+    labels: solarLabels,
+    datasets: [
+      {
+        label: 'Global Tilted Irradiance (W/m²)',
+        data: solarData,
+        fill: true,
+        backgroundColor: 'rgba(255, 215, 0, 0.2)',
+        borderColor: 'rgba(255, 215, 0, 1)',
+        pointBackgroundColor: 'rgba(255, 215, 0, 1)',
+        pointBorderColor: '#fff',
+        pointHoverRadius: 7,
+        tension: 0.4,
+        yAxisID: 'y',
+      }
+    ],
+  };
+
+  const solarChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 0 },
+    interaction: {
+      mode: 'index' as const,
+      intersect: false,
+    },
+    plugins: {
+      legend: { 
+        position: 'top' as const, 
+        labels: { color: '#fff' } 
+      },
+      title: { 
+        display: true, 
+        text: 'Today\'s Hourly Solar Irradiance - Global Tilted (Open-Meteo)', 
+        color: '#fff', 
+        font: { size: 16 } 
+      },
+    },
+    scales: {
+      x: { 
+        ticks: { color: '#ccc' }, 
+        grid: { display: false }, 
+        title: { display: true, text: 'Time (Hour)', color: '#ccc' } 
+      },
+      y: { 
+        type: 'linear' as const, 
+        display: true, 
+        position: 'left' as const, 
+        beginAtZero: true, 
+        ticks: { color: 'rgba(255, 215, 0, 1)' }, 
+        grid: { color: 'rgba(255, 255, 255, 0.1)' }, 
+        title: { display: true, text: 'Irradiance (W/m²)', color: 'rgba(255, 215, 0, 1)' } 
+      },
+    },
+  };
+
   return (
     <div className="page-container">
       <h1>Dashboard</h1>
       <div className="dashboard-layout">
-        <div className="chart-container">
-          <Line options={chartOptions} data={chartData} />
+        <div className="left-charts">
+          <div className="chart-container">
+            <Line options={chartOptions} data={chartData} />
+          </div>
+          <div className="solar-chart-container">
+            <h3 style={{ margin: 0, marginBottom: 8, color: '#ccc' }}>Today's Hourly Solar Irradiance (Global Tilted)</h3>
+            {solarLoading ? (
+              <p>Loading solar data...</p>
+            ) : solarError ? (
+              <p style={{color: 'red'}}>Error: {solarError}</p>
+            ) : solarInfo ? (
+              <>
+                <p style={{color: '#ddd', marginTop: 0}}>{solarInfo}</p>
+                <Line options={solarChartOptions} data={solarChartData} />
+              </>
+            ) : solarData.length === 0 ? (
+              <p>No solar data available for today</p>
+            ) : (
+              <Line options={solarChartOptions} data={solarChartData} />
+            )}
+          </div>
         </div>
         <div className="explanation-box">
           <h2>Your Analysis Hub</h2>
