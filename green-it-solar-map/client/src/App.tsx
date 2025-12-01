@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Route, Switch, NavLink } from 'react-router-do
 import HomePage from './pages/HomePage';
 import PredictionPage from './pages/PredictionPage';
 import DashboardPage from './pages/DashboardPage';
+import SolarAnalysisPage from './pages/SolarAnalysisPage';
 import './App.css';
 
 export interface AnalysisResult {
@@ -29,6 +30,9 @@ const App: React.FC = () => {
       <Switch>
         <Route path="/" exact>
           <HomePage onAnalysisComplete={handleNewAnalysis} />
+        </Route>
+        <Route path="/solar-analysis">
+          <SolarAnalysisPage onAnalysisComplete={handleNewAnalysis} />
         </Route>
         <Route path="/prediction">
           <PredictionPage latestResult={analysisHistory[0]} />

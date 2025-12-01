@@ -57,3 +57,111 @@ export const fetchEnergyData = async (projectId: string) => {
     generation: [45, 49, 60, 71, 46, 40],
   });
 };
+
+// GIS API functions for GeoTIFF sampling and PV calculations
+
+export interface PolygonGeoJSON {
+  type: 'Polygon';
+  coordinates: number[][][];
+}
+
+export interface ZonalStats {
+  mean: number;
+  median: number;
+  min: number;
+  max: number;
+  std: number;
+  count: number;
+  units: string;
+}
+
+export interface PVSystemPreset {
+  name: string;
+  displayName: string;
+  panelEfficiency: number;
+  tilt: number;
+  azimuth: number;
+  performanceRatio: number;
+  moduleArea?: number;
+  capacity_kWp?: number;
+}
+
+export interface PVCalculationResult {
+  daily_kWh: number;
+  yearly_kWh: number;
+  monthly_kWh?: number[];
+  kWh_per_kWp_per_year?: number;
+  area_m2: number;
+  installed_capacity_kWp?: number;
+  ghi_mean: number;
+  ghi_units: string;
+}
+
+/**
+ * Sample GHI and other layers for a polygon
+ */
+export const sampleGHI = async (polygonGeoJson: PolygonGeoJSON, layers?: string[]) => {
+  try {
+    const response = await apiClient.post('/gis/sample-ghi', {
+      polygonGeoJson,
+      layers: layers || ['GHI'],
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error('Error sampling GHI:', error);
+    throw error;
+  }
+};
+
+/**
+ * Compute PV energy output
+ */
+export const computePV = async (params: {
+  polygonGeoJson?: PolygonGeoJSON;
+  area_m2: number;
+  ghi_mean?: number;
+  systemConfig?: string | PVSystemPreset;
+  installed_capacity_kWp?: number;
+  useTiltCorrection?: boolean;
+  latitude?: number;
+  longitude?: number;
+}) => {
+  try {
+    const response = await apiClient.post('/gis/compute-pv', params);
+    return response.data;
+  } catch (error: any) {
+    console.error('Error computing PV:', error);
+    throw error;
+  }
+};
+
+/**
+ * Compute PV with monthly breakdown
+ */
+export const computeMonthlyPV = async (params: {
+  polygonGeoJson: PolygonGeoJSON;
+  area_m2: number;
+  systemConfig?: string | PVSystemPreset;
+  installed_capacity_kWp?: number;
+}) => {
+  try {
+    const response = await apiClient.post('/gis/monthly-pv', params);
+    return response.data;
+  } catch (error: any) {
+    console.error('Error computing monthly PV:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get available PV system presets
+ */
+export const getPVPresets = async () => {
+  try {
+    const response = await apiClient.get('/gis/presets');
+    return response.data;
+  } catch (error: any) {
+    console.error('Error getting presets:', error);
+    throw error;
+  }
+};

@@ -1,0 +1,45 @@
+.app-layout {
+  min-height: 100vh;
+  background: #f8fafc;
+}
+
+.app-body {
+  display: flex;
+  min-height: calc(100vh - 64px);
+}
+
+.app-content {
+  flex: 1;
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+@media (min-width: 1024px) {
+  .app-body {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+  }
+  
+  .app-content {
+    padding: 32px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .app-content {
+    padding: 16px;
+  }
+}
+
+/* Dark theme support */
+.app-layout.dark {
+  background: #0f172a;
+  color: #f1f5f9;
+}
+
+.app-layout.dark .app-content {
+  background: #0f172a;
+}
+
