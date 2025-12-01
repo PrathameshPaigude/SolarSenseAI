@@ -1,0 +1,175 @@
+.top-app-bar {
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.app-bar-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+}
+
+.app-bar-left {
+  flex: 0 0 auto;
+}
+
+.app-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  color: #1e293b;
+  font-weight: 700;
+  font-size: 1.25rem;
+}
+
+.logo-icon {
+  color: #f59e0b;
+  font-size: 1.5rem;
+}
+
+.logo-text {
+  letter-spacing: -0.02em;
+}
+
+.app-bar-center {
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: center;
+  padding: 0 32px;
+}
+
+.step-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+  color: #64748b;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: all 0.2s;
+  min-width: 100px;
+}
+
+.step-item:hover {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.step-item.active {
+  color: #3b82f6;
+}
+
+.step-item.current {
+  color: #1e40af;
+  font-weight: 600;
+}
+
+.step-number {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.step-item.active .step-number {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+.step-item.current .step-number {
+  background: #1e40af;
+  color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+
+.step-label {
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.step-connector {
+  width: 40px;
+  height: 2px;
+  background: #e2e8f0;
+  margin: 0 4px;
+}
+
+.app-bar-right {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.icon-button {
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 1.125rem;
+}
+
+.icon-button:hover {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+@media (max-width: 1024px) {
+  .step-label {
+    display: none;
+  }
+  
+  .step-item {
+    min-width: auto;
+    padding: 8px;
+  }
+  
+  .app-bar-center {
+    padding: 0 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-bar-content {
+    padding: 0 16px;
+  }
+  
+  .logo-text {
+    display: none;
+  }
+  
+  .step-connector {
+    width: 20px;
+  }
+}
+

@@ -1,0 +1,57 @@
+.card {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 24px;
+  margin-bottom: 24px;
+  transition: box-shadow 0.2s;
+}
+
+.card:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.card-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+.card-header-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-content {
+  color: #475569;
+}
+
+/* Dark theme */
+.app-layout.dark .card {
+  background: #1e293b;
+  border: 1px solid #334155;
+}
+
+.app-layout.dark .card-title {
+  color: #f1f5f9;
+}
+
+.app-layout.dark .card-content {
+  color: #cbd5e1;
+}
+
+.app-layout.dark .card-header {
+  border-bottom-color: #334155;
+}
+

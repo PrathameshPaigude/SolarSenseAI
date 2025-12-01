@@ -5,9 +5,9 @@ import {
   Ion, Math as CesiumMath, Viewer, ScreenSpaceEventHandler, ScreenSpaceEventType,
   Color, PolygonHierarchy, Entity
 } from 'cesium';
-import { FaLocationArrow, FaDrawPolygon, FaTimes, FaSync, FaBolt, FaRulerCombined, FaGlobe, FaKeyboard } from 'react-icons/fa';
+import { FaLocationArrow, FaDrawPolygon, FaTimes, FaBolt, FaRulerCombined, FaGlobe, FaKeyboard } from 'react-icons/fa';
 import { AnalysisResult } from '../App';
-import { safeComputeGeodesicAreaM2, validatePolygon } from '../utils/cesiumArea';
+import { safeComputeGeodesicAreaM2, validatePolygon, cesiumPositionsToLonLatRing } from '../utils/cesiumArea';
 
 Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIxNDdiNWY1MC1hZDJhLTQ3NjItODIxOC03MmM1Mzk0MzNkNDUiLCJpZCI6MzQwMTEwLCJpYXQiOjE3NTc1MDc5MDR9.cyUvzRrufzlkzGqfd0miOY6y4CabqJ4Ob2o-0DG2slY";
 
@@ -25,11 +25,7 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
   const [inputMode, setInputMode] = useState<InputMode>('choice');
   const [isDrawing, setIsDrawing] = useState(false);
   const [polygonPoints, setPolygonPoints] = useState<Cartesian3[]>([]);
-  const [showResults, setShowResults] = useState(false);
-  const [calculatedArea, setCalculatedArea] = useState(0);
-  const [powerSaved, setPowerSaved] = useState<number | null>(null);
   const [directAreaInput, setDirectAreaInput] = useState('');
-  const [areaWarning, setAreaWarning] = useState<string | null>(null);
 
   const [lat, setLat] = useState('18.463645');
   const [lng, setLng] = useState('73.868095');
@@ -56,6 +52,17 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
     return () => { if (viewer && !viewer.isDestroyed()) { viewer.destroy(); } };
   }, []);
 
+  // Convert polygon points to GeoJSON format
+  const getPolygonGeoJSON = (points: Cartesian3[]) => {
+    if (points.length < 3) return null;
+    const ring = cesiumPositionsToLonLatRing(points);
+    if (ring.length < 4) return null;
+    return {
+      type: 'Polygon' as const,
+      coordinates: [ring],
+    };
+  };
+
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) return;
     const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
@@ -75,7 +82,7 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
 
       handler.setInputAction(() => {
         setIsDrawing(false);
-        
+
         // Validate polygon before computing area
         const validation = validatePolygon(polygonPoints);
         if (!validation.valid) {
@@ -83,30 +90,38 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
           setPolygonPoints([]);
           return;
         }
-        
+
         // Compute geodesic area using the safe wrapper
         const area = safeComputeGeodesicAreaM2(polygonPoints);
-        
+
         if (area === 0) {
           alert('Could not calculate area. Please try drawing the polygon again.');
           setPolygonPoints([]);
           return;
         }
-        
+
         // Warn user if polygon has self-intersections
         if (validation.hasKinks) {
-          setAreaWarning('Warning: Polygon has self-intersections. Area may be inaccurate. Please redraw for better accuracy.');
-        } else {
-          setAreaWarning(null);
+          alert('Warning: Polygon has self-intersections. Area may be inaccurate. Please redraw for better accuracy.');
         }
-        
-        setCalculatedArea(area);
-        setShowResults(true);
-        setPowerSaved(null);
+
+        // Navigate to results page
+        const polygonGeoJSON = getPolygonGeoJSON(polygonPoints);
+        if (polygonGeoJSON) {
+          history.push({
+            pathname: '/solar-analysis',
+            state: {
+              polygonGeoJson: polygonGeoJSON,
+              area_m2: area,
+              latitude: parseFloat(lat),
+              longitude: parseFloat(lng)
+            }
+          });
+        }
       }, ScreenSpaceEventType.RIGHT_CLICK);
     }
     return () => handler.destroy();
-  }, [viewer, isDrawing, polygonPoints]);
+  }, [viewer, isDrawing, polygonPoints, history, lat, lng]);
 
   useEffect(() => {
     if (!viewer || viewer.isDestroyed()) return;
@@ -154,19 +169,15 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
 
   const startDrawing = () => {
     setIsDrawing(true);
-    setShowResults(false);
     setPolygonPoints([]);
     if (drawingEntityRef.current) viewer?.entities.remove(drawingEntityRef.current);
   };
 
   const reset = () => {
     setIsDrawing(false);
-    setShowResults(false);
     setPolygonPoints([]);
-    setPowerSaved(null);
     setInputMode('choice');
     setDirectAreaInput('');
-    setAreaWarning(null);
     if (drawingEntityRef.current) viewer?.entities.remove(drawingEntityRef.current);
   };
 
@@ -176,9 +187,38 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
       alert('Please enter a valid area in square meters.');
       return;
     }
-    setCalculatedArea(area);
-    setShowResults(true);
-    setPowerSaved(null);
+
+    const latitude = parseFloat(lat);
+    const longitude = parseFloat(lng);
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+      alert('Please enter valid coordinates (Latitude and Longitude).');
+      return;
+    }
+
+    // Create a synthetic polygon around the point for GSA sampling
+    // ~10m box: +/- 0.0001 degrees
+    const delta = 0.0001;
+    const syntheticPoints = [
+      Cartesian3.fromDegrees(longitude - delta, latitude - delta),
+      Cartesian3.fromDegrees(longitude + delta, latitude - delta),
+      Cartesian3.fromDegrees(longitude + delta, latitude + delta),
+      Cartesian3.fromDegrees(longitude - delta, latitude + delta)
+    ];
+
+    const polygonGeoJSON = getPolygonGeoJSON(syntheticPoints);
+
+    if (polygonGeoJSON) {
+      history.push({
+        pathname: '/solar-analysis',
+        state: {
+          polygonGeoJson: polygonGeoJSON,
+          area_m2: area,
+          latitude: latitude,
+          longitude: longitude
+        }
+      });
+    }
   };
 
   const selectInputMode = (mode: 'direct' | 'globe') => {
@@ -193,29 +233,6 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
     }
   };
 
-  const runPrediction = () => {
-    const panelEfficiency = 0.20;
-    const performanceRatio = 0.85;
-    const panelDensityWattsPerSqm = 200;
-    const peakSunHoursPerDay = 5;
-
-    const installedCapacityKw = (calculatedArea * panelDensityWattsPerSqm) / 1000;
-    const dailyKwh = installedCapacityKw * peakSunHoursPerDay * performanceRatio * panelEfficiency;
-    
-    setPowerSaved(dailyKwh);
-
-    const result: AnalysisResult = {
-      area: calculatedArea,
-      power: dailyKwh,
-      location: { lat, lng },
-      timestamp: new Date(),
-    };
-
-    onAnalysisComplete(result);
-
-    history.push('/prediction');
-  };
-  
   const renderChoicePanel = () => (
     <div className="choice-panel">
       <h3 className="choice-title">Select Input Method</h3>
@@ -227,7 +244,7 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
           </div>
           <div className="choice-content">
             <h4>Direct Input</h4>
-            <p>Enter the area manually</p>
+            <p>Enter area & coordinates</p>
           </div>
         </button>
         <button className="choice-button" onClick={() => selectInputMode('globe')}>
@@ -245,7 +262,8 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
 
   const renderDirectInputPanel = () => (
     <div className="direct-input-panel">
-      <h3 className="panel-title">Enter Rooftop Area</h3>
+      <h3 className="panel-title">Enter Site Details</h3>
+
       <div className="input-section">
         <label className="input-label">
           <FaRulerCombined className="label-icon" />
@@ -261,6 +279,32 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
           step="0.01"
         />
       </div>
+
+      <div className="input-section">
+        <label className="input-label">
+          <FaLocationArrow className="label-icon" />
+          Location
+        </label>
+        <div className="coord-inputs">
+          <input
+            type="number"
+            value={lat}
+            onChange={e => setLat(e.target.value)}
+            className="coord-input"
+            placeholder="Lat"
+            step="0.000001"
+          />
+          <input
+            type="number"
+            value={lng}
+            onChange={e => setLng(e.target.value)}
+            className="coord-input"
+            placeholder="Lng"
+            step="0.000001"
+          />
+        </div>
+      </div>
+
       <div className="input-actions">
         <button className="ui-button primary-button" onClick={handleDirectAreaSubmit}>
           <FaBolt /> Calculate
@@ -301,39 +345,9 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
     </>
   );
 
-  const renderResultsPanel = () => (
-    <div className="results-panel">
-      <h3 className="panel-title">Analysis Results</h3>
-      {areaWarning && (
-        <div className="warning-message">
-          <span className="warning-icon">⚠️</span>
-          <span className="warning-text">{areaWarning}</span>
-        </div>
-      )}
-      <div className="result-item">
-        <span className="result-label">
-          <FaRulerCombined className="result-icon" />
-          Rooftop Area:
-        </span>
-        <span className="result-value">{calculatedArea.toFixed(2)} m²</span>
-      </div>
-      <div className="action-buttons">
-        <button className="ui-button primary-button" onClick={runPrediction}>
-          <FaBolt /> Go to Prediction
-        </button>
-        <button className="ui-button secondary-button" onClick={reset}>
-          <FaSync /> Start Over
-        </button>
-      </div>
-    </div>
-  );
-
   const renderPanelContent = () => {
     if (inputMode === 'choice') {
       return renderChoicePanel();
-    }
-    if (showResults) {
-      return renderResultsPanel();
     }
     if (isDrawing) {
       return renderDrawingPanel();
