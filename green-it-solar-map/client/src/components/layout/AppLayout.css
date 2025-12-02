@@ -1,45 +1,48 @@
 .app-layout {
-  min-height: 100vh;
-  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: #f8f9fa;
+  /* Light neutral background */
+  color: #333;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+.app-layout.dark {
+  background-color: #121212;
+  color: #e0e0e0;
 }
 
 .app-body {
   display: flex;
-  min-height: calc(100vh - 64px);
+  flex: 1;
+  overflow: hidden;
+  /* Prevent body scroll, let content scroll */
 }
 
 .app-content {
   flex: 1;
+  overflow-y: auto;
   padding: 24px;
   max-width: 1400px;
   margin: 0 auto;
   width: 100%;
 }
 
-@media (min-width: 1024px) {
-  .app-body {
-    display: grid;
-    grid-template-columns: 240px 1fr;
-  }
-  
-  .app-content {
-    padding: 32px;
-  }
+/* Scrollbar styling */
+.app-content::-webkit-scrollbar {
+  width: 8px;
 }
 
-@media (max-width: 1023px) {
-  .app-content {
-    padding: 16px;
-  }
+.app-content::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-/* Dark theme support */
-.app-layout.dark {
-  background: #0f172a;
-  color: #f1f5f9;
+.app-content::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
 }
 
-.app-layout.dark .app-content {
-  background: #0f172a;
+.dark .app-content::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
 }
-

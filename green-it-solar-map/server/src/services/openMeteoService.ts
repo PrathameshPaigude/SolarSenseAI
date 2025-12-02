@@ -15,7 +15,7 @@ export class OpenMeteoService {
       const params = new URLSearchParams({
         latitude: lat.toString(),
         longitude: lng.toString(),
-        hourly: 'global_tilted_irradiance,shortwave_radiation,direct_radiation',
+        hourly: 'shortwave_radiation,direct_radiation,shortwave_radiation_instant,direct_radiation_instant,global_tilted_irradiance_instant,terrestrial_radiation_instant,terrestrial_radiation,global_tilted_irradiance',
         models: 'satellite_radiation_seamless',
         timezone: 'auto',
         start: startDate,

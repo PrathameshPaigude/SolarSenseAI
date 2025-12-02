@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FaRulerCombined, FaBolt, FaSun, FaSync, FaSpinner, FaMap, FaArrowRight } from 'react-icons/fa';
 import { sampleGHI, computePV, PVCalculationResult, ZonalStats } from '../../services/api';
 import { pvPresets } from '../../config/pvPresets';
@@ -42,12 +42,46 @@ const SolarAnalysisResults: React.FC<SolarAnalysisResultsProps> = ({
     useTiltCorrection: false,
   });
 
-  // Auto-run analysis when polygon or area changes
+  const isMountedRef = useRef(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Auto-run analysis when polygon or area changes (with debouncing)
   useEffect(() => {
     if (polygonGeoJson && area_m2 > 0) {
-      runAnalysis();
+      // Cancel any ongoing analysis
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      
+      // Debounce to prevent rapid re-runs
+      const timeoutId = setTimeout(() => {
+        if (isMountedRef.current) {
+          runAnalysis();
+        }
+      }, 300); // Wait 300ms after last change
+      
+      return () => {
+        clearTimeout(timeoutId);
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
+      };
     }
-  }, [polygonGeoJson, area_m2]);
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [polygonGeoJson, area_m2, runAnalysis]);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   // Re-run PV calculation when preset changes (without re-fetching GIS data)
   useEffect(() => {
@@ -56,7 +90,15 @@ const SolarAnalysisResults: React.FC<SolarAnalysisResultsProps> = ({
     }
   }, [analysis.selectedPreset, analysis.useTiltCorrection]);
 
-  const runAnalysis = async () => {
+  const runAnalysis = useCallback(async () => {
+    // Cancel any previous request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
+
     setAnalysis(prev => ({ ...prev, loading: true, error: null }));
 
     try {
@@ -94,6 +136,9 @@ const SolarAnalysisResults: React.FC<SolarAnalysisResultsProps> = ({
         longitude,
       });
 
+      // Check if request was aborted
+      if (signal.aborted || !isMountedRef.current) return;
+
       const newAnalysis = {
         ...analysis,
         layers: layers,
@@ -112,6 +157,9 @@ const SolarAnalysisResults: React.FC<SolarAnalysisResultsProps> = ({
         });
       }
     } catch (error: any) {
+      // Don't update state if aborted or unmounted
+      if (signal.aborted || !isMountedRef.current) return;
+      
       console.error('Analysis error:', error);
       setAnalysis(prev => ({
         ...prev,
@@ -119,7 +167,7 @@ const SolarAnalysisResults: React.FC<SolarAnalysisResultsProps> = ({
         error: error.message || 'Failed to analyze solar potential',
       }));
     }
-  };
+  }, [polygonGeoJson, area_m2, latitude, longitude, analysis.selectedPreset, analysis.useTiltCorrection, onUpdate]);
 
   const recalculatePV = async () => {
     if (!analysis.layers || !analysis.layers.GHI) return;

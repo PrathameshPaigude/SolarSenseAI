@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage';
 import PredictionPage from './pages/PredictionPage';
 import DashboardPage from './pages/DashboardPage';
 import SolarAnalysisPage from './pages/SolarAnalysisPage';
+import AppLayout from './components/layout/AppLayout';
 import './App.css';
 
 export interface AnalysisResult {
@@ -22,25 +23,22 @@ const App: React.FC = () => {
 
   return (
     <Router>
-      <nav className="main-nav">
-        <NavLink to="/" exact activeClassName="active-link">Home</NavLink>
-        <NavLink to="/prediction" activeClassName="active-link">Prediction Tool</NavLink>
-        <NavLink to="/dashboard" activeClassName="active-link">Dashboard</NavLink>
-      </nav>
-      <Switch>
-        <Route path="/" exact>
-          <HomePage onAnalysisComplete={handleNewAnalysis} />
-        </Route>
-        <Route path="/solar-analysis">
-          <SolarAnalysisPage onAnalysisComplete={handleNewAnalysis} />
-        </Route>
-        <Route path="/prediction">
-          <PredictionPage latestResult={analysisHistory[0]} />
-        </Route>
-        <Route path="/dashboard">
-          <DashboardPage history={analysisHistory} />
-        </Route>
-      </Switch>
+      <AppLayout>
+        <Switch>
+          <Route path="/" exact>
+            <HomePage onAnalysisComplete={handleNewAnalysis} />
+          </Route>
+          <Route path="/solar-analysis">
+            <SolarAnalysisPage onAnalysisComplete={handleNewAnalysis} />
+          </Route>
+          <Route path="/prediction">
+            <PredictionPage latestResult={analysisHistory[0]} />
+          </Route>
+          <Route path="/dashboard">
+            <DashboardPage history={analysisHistory} />
+          </Route>
+        </Switch>
+      </AppLayout>
     </Router>
   );
 };
