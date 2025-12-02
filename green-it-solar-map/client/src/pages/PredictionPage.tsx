@@ -1,84 +1,232 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useLocation, useHistory } from 'react-router-dom';
+import { Line } from 'react-chartjs-2';
+import {
+  Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler
+} from 'chart.js';
+import { FaRupeeSign, FaChartLine, FaLeaf, FaPiggyBank, FaArrowLeft } from 'react-icons/fa';
 import { AnalysisResult } from '../App';
-import './PageStyles.css';
-import { FaRulerCombined, FaSolarPanel, FaSun, FaCalendarAlt, FaChartLine } from 'react-icons/fa';
+import './PredictionPage.css';
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
 interface PredictionPageProps {
   latestResult?: AnalysisResult;
 }
 
-const PredictionPage: React.FC<PredictionPageProps> = ({ latestResult }) => {
-  const [isExplanationVisible, setIsExplanationVisible] = useState(false);
+interface LocationState {
+  pvOutputAnnual?: number; // kWh/year
+  installedCapacity?: number; // kWp
+  area?: number;
+}
 
-  if (!latestResult) {
+const PredictionPage: React.FC<PredictionPageProps> = ({ latestResult }) => {
+  const location = useLocation<LocationState>();
+  const history = useHistory();
+  const state = location.state;
+
+  // Defaults if no state passed (fallback to latestResult or zeros)
+  const initialAnnualOutput = state?.pvOutputAnnual || (latestResult?.power ? latestResult.power * 365 : 0);
+  const initialCapacity = state?.installedCapacity || (latestResult?.area ? latestResult.area / 6 : 0); // rough est
+
+  // Financial Inputs State
+  const [tariff, setTariff] = useState(8.5); // ₹/kWh
+  const [capexPerKw, setCapexPerKw] = useState(45000); // ₹/kWp
+  const [omCostPerKw, setOmCostPerKw] = useState(500); // ₹/kW/year
+  const [lifetime, setLifetime] = useState(25); // years
+  const [inflation, setInflation] = useState(2); // % per year (tariff increase)
+
+  // Derived Metrics
+  const totalCapex = useMemo(() => initialCapacity * capexPerKw, [initialCapacity, capexPerKw]);
+
+  const financialProjection = useMemo(() => {
+    let cumulativeCashflow = -totalCapex;
+    const cashflowData = [cumulativeCashflow];
+    const yearlySavingsData: number[] = [];
+    let paybackYear = -1;
+
+    for (let year = 1; year <= lifetime; year++) {
+      // Degrade output slightly (0.5% per year)
+      const output = initialAnnualOutput * Math.pow(0.995, year - 1);
+
+      // Increase tariff by inflation
+      const currentTariff = tariff * Math.pow(1 + inflation / 100, year - 1);
+
+      const savings = output * currentTariff;
+      const omCost = initialCapacity * omCostPerKw * Math.pow(1.03, year - 1); // 3% O&M inflation
+
+      const netSavings = savings - omCost;
+      cumulativeCashflow += netSavings;
+
+      cashflowData.push(cumulativeCashflow);
+      yearlySavingsData.push(netSavings);
+
+      if (paybackYear === -1 && cumulativeCashflow >= 0) {
+        paybackYear = year + (Math.abs(cashflowData[year - 1]) / netSavings); // Linear interpolation
+      }
+    }
+
+    return {
+      cashflowData,
+      firstYearSavings: yearlySavingsData[0],
+      paybackYear,
+      totalSavings: cumulativeCashflow + totalCapex, // Net savings over lifetime
+      roi: ((cumulativeCashflow + totalCapex) / totalCapex) * 100
+    };
+  }, [initialAnnualOutput, initialCapacity, totalCapex, tariff, omCostPerKw, lifetime, inflation]);
+
+  const chartData = {
+    labels: Array.from({ length: lifetime + 1 }, (_, i) => i.toString()),
+    datasets: [
+      {
+        label: 'Cumulative Cashflow (₹)',
+        data: financialProjection.cashflowData,
+        borderColor: '#4caf50',
+        backgroundColor: 'rgba(76, 175, 80, 0.1)',
+        fill: true,
+        tension: 0.4,
+      }
+    ]
+  };
+
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top' as const },
+      tooltip: {
+        callbacks: {
+          label: (context: any) => `₹${context.raw.toLocaleString('en-IN', { maximumFractionDigits: 0 })}`
+        }
+      }
+    },
+    scales: {
+      y: {
+        ticks: {
+          callback: (value: any) => `₹${value / 1000}k`
+        }
+      },
+      x: {
+        title: { display: true, text: 'Years' }
+      }
+    }
+  };
+
+  if (!initialAnnualOutput || !initialCapacity) {
     return (
-      <div className="page-container">
-        <h1>Prediction Tool</h1>
-        <p>No analysis has been run yet. Please go to the Home page, draw a polygon, and run a prediction.</p>
+      <div style={{ padding: '40px', textAlign: 'center' }}>
+        <h2>Missing Analysis Data</h2>
+        <p>Please run a solar analysis first.</p>
+        <button className="ui-button primary-button" onClick={() => history.push('/')}>Go to Home</button>
       </div>
     );
   }
 
-  const { area, power, location } = latestResult;
-  const monthlySavings = power * 30;
-  const yearlySavings = power * 365;
-  const numberOfPanels = Math.floor(area / 1.7);
-
   return (
-    <div className="page-container">
-      <h1>Prediction Analysis</h1>
-      <h2>Location: {location.lat}, {location.lng}</h2>
-      <div className="results-grid">
-        <div className="result-card">
-          <FaRulerCombined className="icon" />
-          <h3>Rooftop Area</h3>
-          <p>{area.toFixed(2)} <span>m²</span></p>
+    <div className="prediction-page">
+      <div className="prediction-grid">
+        {/* Left: Inputs */}
+        <div className="input-card">
+          <h2 className="card-title"><FaPiggyBank /> Financial Parameters</h2>
+
+          <div className="read-only-summary">
+            <div className="summary-row">
+              <span>System Size:</span>
+              <span>{initialCapacity.toFixed(2)} kWp</span>
+            </div>
+            <div className="summary-row">
+              <span>Annual Output:</span>
+              <span>{(initialAnnualOutput / 1000).toFixed(2)} MWh</span>
+            </div>
+          </div>
+
+          <div className="input-group">
+            <label className="input-label">Electricity Tariff (₹/kWh)</label>
+            <input
+              type="number" className="input-field"
+              value={tariff} onChange={e => setTariff(parseFloat(e.target.value))}
+              step="0.1"
+            />
+          </div>
+
+          <div className="input-group">
+            <label className="input-label">Installation Cost (₹/kWp)</label>
+            <input
+              type="number" className="input-field"
+              value={capexPerKw} onChange={e => setCapexPerKw(parseFloat(e.target.value))}
+              step="1000"
+            />
+          </div>
+
+          <div className="input-group">
+            <label className="input-label">O&M Cost (₹/kW/year)</label>
+            <input
+              type="number" className="input-field"
+              value={omCostPerKw} onChange={e => setOmCostPerKw(parseFloat(e.target.value))}
+              step="100"
+            />
+          </div>
+
+          <div className="input-group">
+            <label className="input-label">Project Lifetime (Years)</label>
+            <input
+              type="number" className="input-field"
+              value={lifetime} onChange={e => setLifetime(parseFloat(e.target.value))}
+              max="30"
+            />
+          </div>
+
+          <button className="ui-button secondary-button" onClick={() => history.push('/solar-analysis')}>
+            <FaArrowLeft /> Back to Analysis
+          </button>
         </div>
-        <div className="result-card">
-          <FaSolarPanel className="icon" />
-          <h3>Est. Panels</h3>
-          <p>~{numberOfPanels} <span>panels</span></p>
-        </div>
-        <div className="result-card">
-          <FaSun className="icon" />
-          <h3>Daily Generation</h3>
-          <p>{power.toFixed(2)} <span>kWh</span></p>
-        </div>
-        <div className="result-card">
-          <FaCalendarAlt className="icon" />
-          <h3>Monthly Generation</h3>
-          <p>{monthlySavings.toFixed(2)} <span>kWh</span></p>
-        </div>
-        <div className="result-card">
-          <FaChartLine className="icon" />
-          <h3>Yearly Generation</h3>
-          <p>{yearlySavings.toFixed(2)} <span>kWh</span></p>
+
+        {/* Right: Results */}
+        <div className="results-column">
+          <div className="metrics-grid">
+            <div className="metric-card">
+              <span className="metric-title">Total Investment</span>
+              <span className="metric-value">
+                ₹{(totalCapex / 100000).toFixed(2)} L
+              </span>
+              <span className="metric-sub">CAPEX</span>
+            </div>
+
+            <div className="metric-card highlight">
+              <span className="metric-title">Annual Savings</span>
+              <span className="metric-value">
+                ₹{financialProjection.firstYearSavings.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </span>
+              <span className="metric-sub">Year 1</span>
+            </div>
+
+            <div className="metric-card">
+              <span className="metric-title">Payback Period</span>
+              <span className="metric-value">
+                {financialProjection.paybackYear > 0 ? financialProjection.paybackYear.toFixed(1) : '> ' + lifetime}
+              </span>
+              <span className="metric-sub">Years</span>
+            </div>
+
+            <div className="metric-card">
+              <span className="metric-title">CO₂ Avoided</span>
+              <span className="metric-value">
+                {(initialAnnualOutput * 0.82 / 1000).toFixed(1)}
+              </span>
+              <span className="metric-sub">Tons / Year</span>
+            </div>
+          </div>
+
+          <div className="chart-card">
+            <div className="chart-header">
+              <h3 className="chart-title"><FaChartLine /> Cashflow Projection</h3>
+            </div>
+            <div style={{ height: '320px' }}>
+              <Line data={chartData} options={chartOptions} />
+            </div>
+          </div>
         </div>
       </div>
-
-      <button 
-        className="explanation-toggle-button" 
-        onClick={() => setIsExplanationVisible(!isExplanationVisible)}
-      >
-        {isExplanationVisible ? 'Hide' : 'Show'} Calculation Details
-      </button>
-
-      {isExplanationVisible && (
-        <div className="explanation-box">
-          <h2>How We Calculate This</h2>
-          <p>
-            Our prediction starts with the <strong>Rooftop Area</strong> you draw. From there, we use a standard model to estimate potential energy generation:
-          </p>
-          <p>
-            1. <strong>Installed Capacity (kW):</strong> We assume a modern solar panel generates about 200 Watts per square meter. The total power capacity is calculated as: <br/>
-            <code>Area * 200W/m² / 1000</code>
-          </p>
-          <p>
-            2. <strong>Energy Generation (kWh):</strong> We then multiply this capacity by the average 'Peak Sun Hours' for the location (approx. 5 hours for Pune) and factor in real-world inefficiencies (like heat, dust, and wiring losses) using a performance ratio of 85% and panel efficiency of 20%.<br/>
-            <code>Capacity * 5 hours * 0.85 * 0.20</code>
-          </p>
-        </div>
-      )}
     </div>
   );
 };

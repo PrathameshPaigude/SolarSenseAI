@@ -1,81 +1,93 @@
 .sidebar {
-  position: fixed;
-  left: 0;
-  top: 64px;
   width: 240px;
-  height: calc(100vh - 64px);
-  background: #ffffff;
-  border-right: 1px solid #e2e8f0;
-  transform: translateX(-100%);
-  transition: transform 0.3s ease;
-  z-index: 90;
-  overflow-y: auto;
+  background-color: #ffffff;
+  border-right: 1px solid #eee;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s ease-in-out, background-color 0.3s, border-color 0.3s;
+  z-index: 900;
+  height: 100%;
 }
 
-.sidebar.open {
-  transform: translateX(0);
+.dark .sidebar {
+  background-color: #1e1e1e;
+  border-right: 1px solid #333;
 }
 
 .sidebar-nav {
-  padding: 16px 0;
+  padding: 24px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .sidebar-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 24px;
-  color: #64748b;
+  padding: 12px 16px;
   text-decoration: none;
-  transition: all 0.2s;
-  border-left: 3px solid transparent;
+  color: #666;
+  border-radius: 8px;
+  transition: background-color 0.2s, color 0.2s;
+  font-weight: 500;
 }
 
 .sidebar-item:hover {
-  background: #f1f5f9;
-  color: #334155;
+  background-color: #f5f5f5;
+  color: #333;
+}
+
+.dark .sidebar-item {
+  color: #aaa;
+}
+
+.dark .sidebar-item:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #fff;
 }
 
 .sidebar-item.active {
-  background: #eff6ff;
-  color: #1e40af;
-  border-left-color: #3b82f6;
-  font-weight: 600;
+  background-color: #fff3e0;
+  color: #e65100;
+}
+
+.dark .sidebar-item.active {
+  background-color: rgba(255, 152, 0, 0.15);
+  color: #ff9800;
 }
 
 .sidebar-icon {
-  font-size: 1.125rem;
-  flex-shrink: 0;
+  font-size: 1.2rem;
 }
 
-.sidebar-label {
-  font-size: 0.9375rem;
-}
-
+/* Mobile Overlay */
 .sidebar-overlay {
   position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 89;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 899;
   display: none;
 }
 
-@media (min-width: 1024px) {
+@media (max-width: 768px) {
   .sidebar {
-    transform: translateX(0);
-    position: relative;
-    top: 0;
-    height: auto;
+    position: fixed;
+    top: 64px;
+    /* Below app bar */
+    bottom: 0;
+    left: 0;
+    transform: translateX(-100%);
   }
-  
-  .sidebar-overlay {
-    display: none !important;
-  }
-}
 
-@media (max-width: 1023px) {
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
   .sidebar-overlay {
     display: block;
   }
 }
-

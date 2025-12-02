@@ -148,13 +148,44 @@ export async function computePV(req: Request, res: Response) {
       }
     }
 
-    // Compute PV output
-    const pvResult = computePVFromZonalStats(
+    // Optionally sample PVOUT for calibration (kWh/kWp/year)
+    let pvoutStats: ZonalStats | null = null;
+    try {
+      if (polygonGeoJson) {
+        pvoutStats = await sampleGeoTIFFForPolygon(getGeoTIFFPath('PVOUT'), polygonGeoJson);
+      }
+    } catch (e) {
+      console.warn('PVOUT sampling failed, continuing without calibration');
+    }
+
+    // Compute PV output with monthly breakdown if latitude is available
+    let pvResult = computePVFromZonalStats(
       area_m2,
       { ...ghiStats, mean: effectiveGHI },
       pvConfig,
-      installed_capacity_kWp
+      installed_capacity_kWp,
+      latitude // Pass latitude for monthly calculation
     );
+
+    // Calibrate against PVOUT if available
+    if (pvoutStats && pvoutStats.mean > 0) {
+      const dcCapacity = pvResult.dc_capacity_kWp || pvResult.installed_capacity_kWp;
+      if (dcCapacity && dcCapacity > 0 && pvResult.yearly_kWh > 0) {
+        const modelSpecificYield = pvResult.yearly_kWh / dcCapacity; // kWh/kWp/year
+        if (modelSpecificYield > 0) {
+          const scale = pvoutStats.mean / modelSpecificYield;
+          const calibratedYearly = pvResult.yearly_kWh * scale;
+          const calibratedSpecific = modelSpecificYield * scale;
+
+          pvResult = {
+            ...pvResult,
+            calibration_scale: scale,
+            calibrated_yearly_kWh: calibratedYearly,
+            calibrated_kWh_per_kWp_per_year: calibratedSpecific,
+          };
+        }
+      }
+    }
 
     res.json({
       success: true,
@@ -163,6 +194,7 @@ export async function computePV(req: Request, res: Response) {
       systemConfig: pvConfig,
       useTiltCorrection,
       effectiveGHI,
+      pvout: pvoutStats,
     });
   } catch (error: any) {
     console.error('Error computing PV:', error);

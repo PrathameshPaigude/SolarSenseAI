@@ -165,3 +165,28 @@ export const getPVPresets = async () => {
     throw error;
   }
 };
+
+/**
+ * Get hourly solar irradiance data from Open-Meteo
+ */
+export const getHourlyIrradiance = async (params: {
+  lat: number;
+  lng: number;
+  start?: string;
+  end?: string;
+}) => {
+  try {
+    const response = await apiClient.get('/solar-data', {
+      params: {
+        lat: params.lat,
+        lng: params.lng,
+        start: params.start,
+        end: params.end,
+      },
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error('Error fetching hourly irradiance:', error);
+    throw error;
+  }
+};
