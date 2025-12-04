@@ -449,6 +449,10 @@ margin-top: 16px;
     grid-template-columns: 350px 1fr;
     height: 550px;
     /* Fixed height for globe view */
+    gap: 0;
+    /* Prevent gap between sidebar and globe */
+    overflow: hidden;
+    /* Prevent any overflow */
 }
 
 .globe-controls {
@@ -456,26 +460,24 @@ margin-top: 16px;
     border-right: 1px solid #eee;
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 16px;
     height: 100%;
     /* Ensure full height */
     box-sizing: border-box;
     overflow: hidden;
-    /* Prevent double scrollbar */
+    /* Prevent scrolling */
     min-height: 0; /* Allow flexbox to shrink */
 }
 
 .controls-scroll-area {
     flex: 1;
-    overflow-y: auto;
+    overflow: hidden;
+    /* Disable both x and y scrolling */
     display: flex;
     flex-direction: column;
     gap: 24px;
-    padding-right: 8px;
-    /* Space for scrollbar */
     min-height: 0; /* Allow flexbox to shrink */
-    /* Smooth scrolling */
-    scroll-behavior: smooth;
+    /* Ensure content fits without scrolling */
 }
 
 .dark .globe-controls {
@@ -490,12 +492,47 @@ margin-top: 16px;
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    box-sizing: border-box;
+    /* Ensure globe doesn't overlap sidebar */
+    min-width: 0;
+    /* Allow flexbox to shrink */
 }
 
 .control-section {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
+    flex-shrink: 0;
+    /* Prevent sections from shrinking */
+    width: 100%;
+    box-sizing: border-box;
+    /* Ensure sections don't overflow */
+}
+
+.control-section .form-group {
+    width: 100%;
+    box-sizing: border-box;
+    /* Prevent form groups from overflowing */
+}
+
+.control-section .form-input {
+    width: 100%;
+    box-sizing: border-box;
+    /* Ensure inputs fit within their containers */
+}
+
+.control-section .form-row {
+    width: 100%;
+    box-sizing: border-box;
+    /* Ensure form rows fit properly */
+}
+
+/* Analyze button container - positioned outside scroll area */
+.globe-controls > div:last-child {
+    flex-shrink: 0;
+    width: 100%;
+    box-sizing: border-box;
+    /* Ensure button container doesn't overflow */
 }
 
 .section-divider {

@@ -58,12 +58,15 @@ export async function computePV(req: Request, res: Response) {
     const {
       polygonGeoJson,
       area_m2,
-      ghi_mean, // Optional: if provided, skip sampling
+      ghi_mean, // Optional: if provided, skip sampling (legacy support)
       systemConfig, // PVSystemPreset or custom config
       installed_capacity_kWp,
       useTiltCorrection = false,
       latitude,
       longitude,
+      panelTechnology = 'mono',
+      gridType = 'on_grid',
+      layers: providedLayers, // Optional: pre-sampled layers
     } = req.body;
 
     // Validate inputs
@@ -71,27 +74,43 @@ export async function computePV(req: Request, res: Response) {
       return res.status(400).json({ error: 'area_m2 must be a positive number' });
     }
 
-    let ghiStats: ZonalStats | null = null;
+    let layers: Record<string, ZonalStats> = providedLayers || {};
 
-    // Sample GHI if not provided
-    if (!ghi_mean) {
+    // Sample layers if not provided
+    if (!providedLayers) {
       if (!polygonGeoJson) {
-        return res.status(400).json({ error: 'Either ghi_mean or polygonGeoJson must be provided' });
-      }
+        // Legacy fallback: if only ghi_mean provided
+        if (ghi_mean) {
+          layers = {
+            GHI: {
+              mean: ghi_mean,
+              median: ghi_mean,
+              min: ghi_mean,
+              max: ghi_mean,
+              std: 0,
+              count: 1,
+              units: 'kWh/m²/day'
+            }
+          };
+        } else {
+          return res.status(400).json({ error: 'Either layers, polygonGeoJson, or ghi_mean must be provided' });
+        }
+      } else {
+        // Sample ALL layers needed for accurate analysis
+        const standardLayers = ['GHI', 'DNI', 'DIF', 'PVOUT', 'GTI', 'OPTA', 'TEMP', 'ELE'];
+        const monthlyLayers = Array.from({ length: 12 }, (_, i) => `PVOUT_${String(i + 1).padStart(2, '0')}`);
+        const allLayersToSample = [...standardLayers, ...monthlyLayers];
 
-      const ghiPath = getGeoTIFFPath('GHI');
-      ghiStats = await sampleGeoTIFFForPolygon(ghiPath, polygonGeoJson);
-    } else {
-      // Create mock zonal stats from provided mean
-      ghiStats = {
-        mean: ghi_mean,
-        median: ghi_mean,
-        min: ghi_mean * 0.9,
-        max: ghi_mean * 1.1,
-        std: ghi_mean * 0.05,
-        count: 1,
-        units: 'kWh/m²/day',
-      };
+        try {
+          layers = await sampleMultipleLayers(allLayersToSample, polygonGeoJson);
+        } catch (error) {
+          console.error('Error sampling layers:', error);
+          // Fallback to just GHI if bulk sampling fails
+          const ghiPath = getGeoTIFFPath('GHI');
+          const ghiStats = await sampleGeoTIFFForPolygon(ghiPath, polygonGeoJson);
+          layers = { GHI: ghiStats };
+        }
+      }
     }
 
     // Get system configuration
@@ -110,91 +129,32 @@ export async function computePV(req: Request, res: Response) {
         performanceRatio: systemConfig.performanceRatio ?? 0.75,
         moduleArea: systemConfig.moduleArea,
         capacity_kWp: systemConfig.capacity_kWp,
+        packingFactor: systemConfig.packingFactor,
       };
     } else {
       pvConfig = PV_SYSTEM_PRESETS.smallResidential;
     }
 
-    // Apply tilt correction if requested
-    let effectiveGHI = ghiStats.mean;
-    if (useTiltCorrection && latitude !== undefined && longitude !== undefined) {
-      try {
-        // Sample DNI and DIF if available for better accuracy
-        let dni: number | undefined;
-        let dif: number | undefined;
-
-        if (polygonGeoJson) {
-          const [dniStats, difStats] = await Promise.all([
-            sampleGeoTIFFForPolygon(getGeoTIFFPath('DNI'), polygonGeoJson).catch(() => null),
-            sampleGeoTIFFForPolygon(getGeoTIFFPath('DIF'), polygonGeoJson).catch(() => null),
-          ]);
-
-          dni = dniStats?.mean;
-          dif = difStats?.mean;
-        }
-
-        effectiveGHI = convertGHIToPOA(
-          ghiStats.mean,
-          latitude,
-          longitude,
-          pvConfig.tilt,
-          pvConfig.azimuth,
-          dni,
-          dif
-        );
-      } catch (tiltError: any) {
-        console.warn('Tilt correction failed, using GHI:', tiltError.message);
-        // Fall back to GHI
-      }
-    }
-
-    // Optionally sample PVOUT for calibration (kWh/kWp/year)
-    let pvoutStats: ZonalStats | null = null;
-    try {
-      if (polygonGeoJson) {
-        pvoutStats = await sampleGeoTIFFForPolygon(getGeoTIFFPath('PVOUT'), polygonGeoJson);
-      }
-    } catch (e) {
-      console.warn('PVOUT sampling failed, continuing without calibration');
-    }
-
-    // Compute PV output with monthly breakdown if latitude is available
-    let pvResult = computePVFromZonalStats(
+    // Compute PV output using v2.0 function
+    const pvResult = computePVFromZonalStats(
       area_m2,
-      { ...ghiStats, mean: effectiveGHI },
+      layers,
       pvConfig,
-      installed_capacity_kWp,
-      latitude // Pass latitude for monthly calculation
-    );
-
-    // Calibrate against PVOUT if available
-    if (pvoutStats && pvoutStats.mean > 0) {
-      const dcCapacity = pvResult.dc_capacity_kWp || pvResult.installed_capacity_kWp;
-      if (dcCapacity && dcCapacity > 0 && pvResult.yearly_kWh > 0) {
-        const modelSpecificYield = pvResult.yearly_kWh / dcCapacity; // kWh/kWp/year
-        if (modelSpecificYield > 0) {
-          const scale = pvoutStats.mean / modelSpecificYield;
-          const calibratedYearly = pvResult.yearly_kWh * scale;
-          const calibratedSpecific = modelSpecificYield * scale;
-
-          pvResult = {
-            ...pvResult,
-            calibration_scale: scale,
-            calibrated_yearly_kWh: calibratedYearly,
-            calibrated_kWh_per_kWp_per_year: calibratedSpecific,
-          };
-        }
+      {
+        installed_capacity_kWp,
+        latitude,
+        longitude,
+        useTiltCorrection,
+        panelTechnology,
+        gridType,
       }
-    }
+    );
 
     res.json({
       success: true,
       pv: pvResult,
-      ghi: ghiStats,
+      layers: layers, // Return all layers for UI display
       systemConfig: pvConfig,
-      useTiltCorrection,
-      effectiveGHI,
-      pvout: pvoutStats,
     });
   } catch (error: any) {
     console.error('Error computing PV:', error);
