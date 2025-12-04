@@ -5,27 +5,16 @@ import {
 } from 'react-icons/fa';
 import { Bar, Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, Filler } from 'chart.js';
-import { AnalysisResult } from '../App';
+import { AnalysisResult, SiteSetup } from '../App';
 import { sampleGHI, computePV, PVCalculationResult, ZonalStats, getHourlyIrradiance, PVSystemPreset } from '../services/api';
 import { pvPresets } from '../config/pvPresets';
 import './SolarAnalysisPage.css';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title, Tooltip, Legend, Filler);
 
-interface LocationState {
-    polygonGeoJson: { type: 'Polygon'; coordinates: number[][][] };
-    area_m2: number;
-    latitude?: number;
-    longitude?: number;
-    method?: string;
-    systemConfig?: { panels: number; watts: number };
-    panelTechnology?: "mono" | "poly" | "thinfilm";
-    gridType?: "on_grid" | "hybrid" | "off_grid";
-    systemType?: string;
-}
-
 interface SolarAnalysisPageProps {
     onAnalysisComplete?: (result: AnalysisResult) => void;
+    siteSetup: SiteSetup | null;
 }
 
 interface AnalysisData {
@@ -51,10 +40,11 @@ const PanelTechProfiles = {
     thinfilm: { power: 150, area: 1.2, coeff: -0.25, noct: 44 },
 };
 
-const SolarAnalysisPage: React.FC<SolarAnalysisPageProps> = ({ onAnalysisComplete }) => {
-    const location = useLocation<LocationState>();
+const SolarAnalysisPage: React.FC<SolarAnalysisPageProps> = ({ onAnalysisComplete, siteSetup }) => {
+    const location = useLocation<SiteSetup>();
     const history = useHistory();
-    const state = location.state;
+    // Use location state if available (fresh navigation), otherwise fallback to persistent app state
+    const state = location.state || siteSetup;
 
     // Local state for interactive configuration
     const [config, setConfig] = useState({
@@ -193,6 +183,7 @@ const SolarAnalysisPage: React.FC<SolarAnalysisPageProps> = ({ onAnalysisComplet
                 power: analysis.pv.daily_kWh,
                 location: { lat: state.latitude.toString(), lng: state.longitude.toString() },
                 timestamp: new Date(),
+                polygonGeoJson: state.polygonGeoJson
             };
             if (onAnalysisComplete) onAnalysisComplete(result);
             history.push({

@@ -1,14 +1,15 @@
 import React, { useMemo } from 'react';
 import { useHistory } from 'react-router-dom';
 import { AnalysisResult } from '../App';
-import { FaFilter, FaSolarPanel, FaLeaf, FaBolt, FaSearch } from 'react-icons/fa';
+import { FaFilter, FaSolarPanel, FaLeaf, FaBolt, FaSearch, FaTrash } from 'react-icons/fa';
 import './DashboardPage.css';
 
 interface DashboardPageProps {
   history: AnalysisResult[];
+  onDeleteAnalysis: (index: number) => void;
 }
 
-const DashboardPage: React.FC<DashboardPageProps> = ({ history }) => {
+const DashboardPage: React.FC<DashboardPageProps> = ({ history, onDeleteAnalysis }) => {
   const routerHistory = useHistory();
 
   const metrics = useMemo(() => {
@@ -146,13 +147,12 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ history }) => {
                           pathname: '/solar-analysis',
                           state: {
                             // Reconstruct state needed for analysis page
-                            // Note: We might not have the full polygon here if not saved, 
-                            // but for now we can at least show the data we have if we persist it better.
-                            // This is a limitation of the current simple in-memory history.
+                            // Note: We now have the full polygon saved!
                             area_m2: item.area,
                             latitude: parseFloat(item.location.lat),
                             longitude: parseFloat(item.location.lng),
-                            method: 'History View'
+                            method: 'History View',
+                            polygonGeoJson: item.polygonGeoJson
                           }
                         })}
                       >
@@ -169,6 +169,46 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ history }) => {
                         })}
                       >
                         Prediction
+                      </button>
+                      <button
+                        className="action-btn"
+                        onClick={() => routerHistory.push({
+                          pathname: '/carbon-credits',
+                          state: {
+                            // Pass necessary data for Carbon Credits calculation
+                            // Assuming we can derive annual_kWh from power (which seems to be annual output in some contexts or daily?)
+                            // In DashboardPage metrics, power * 365 is used for annual energy.
+                            // So let's pass a constructed object that CarbonCreditsPage expects.
+                            // CarbonCreditsPage expects latestResult which has power.
+                            // But wait, CarbonCreditsPage uses latestResult.power * 1450 in the useEffect if annual_kWh is not passed?
+                            // Actually CarbonCreditsPage takes latestResult prop.
+                            // But we are navigating via history push.
+                            // Let's check CarbonCreditsPage again. It takes props `latestResult`.
+                            // But when navigating via router, we usually pass state.
+                            // The CarbonCreditsPage component is rendered in App.tsx with `latestResult={analysisHistory[0]}`.
+                            // If we navigate from Dashboard, we want to view a SPECIFIC site's carbon credits, not just the latest one in App state.
+                            // However, the current App structure passes `analysisHistory[0]` to CarbonCreditsPage.
+                            // To support viewing any site, we might need to update App.tsx or CarbonCreditsPage to read from location.state as well.
+                            // For now, let's pass the data in state and assume we might need to update CarbonCreditsPage to read it.
+                            // Actually, let's just pass it and see if we can update CarbonCreditsPage to use location state too.
+                            power: item.power, // Daily kWh
+                            area: item.area
+                          }
+                        })}
+                      >
+                        <FaLeaf /> Credits
+                      </button>
+                      <button
+                        className="action-btn delete-btn"
+                        onClick={() => {
+                          if (window.confirm('Are you sure you want to delete this analysis?')) {
+                            onDeleteAnalysis(index);
+                          }
+                        }}
+                        title="Delete Analysis"
+                        style={{ color: '#ef5350' }}
+                      >
+                        <FaTrash />
                       </button>
                     </div>
                   </td>

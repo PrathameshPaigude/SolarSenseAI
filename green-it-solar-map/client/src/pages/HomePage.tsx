@@ -9,7 +9,7 @@ import {
   FaSolarPanel, FaRulerCombined, FaGlobeAmericas, FaMapMarkerAlt,
   FaPlay, FaTrash, FaCheck, FaSearch, FaDrawPolygon
 } from 'react-icons/fa';
-import { AnalysisResult } from '../App';
+import { AnalysisResult, SiteSetup } from '../App';
 import { safeComputeGeodesicAreaM2, validatePolygon, cesiumPositionsToLonLatRing } from '../utils/cesiumArea';
 import PVConfigModal, { PVConfig } from '../components/gis/PVConfigModal';
 import './HomePage.css';
@@ -18,11 +18,12 @@ Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIxNDdiN
 
 interface HomePageProps {
   onAnalysisComplete: (result: AnalysisResult) => void;
+  setSiteSetup: (setup: SiteSetup) => void;
 }
 
 type InputMode = 'quick' | 'area' | 'globe';
 
-const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
+const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete, setSiteSetup }) => {
   const history = useHistory();
   const [activeMode, setActiveMode] = useState<InputMode>('quick');
 
@@ -75,22 +76,25 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
         Cartesian3.fromDegrees(lng - delta, lat + delta)
       ];
       const polygonGeoJSON = getPolygonGeoJSON(syntheticPoints);
+      if (!polygonGeoJSON) return;
 
+      const setup: SiteSetup = {
+        polygonGeoJson: polygonGeoJSON,
+        area_m2: estimatedArea,
+        latitude: lat,
+        longitude: lng,
+        systemConfig: {
+          panels,
+          watts: config.panelWattage
+        },
+        panelTechnology: config.panelTechnology,
+        gridType: config.gridType,
+        systemType: config.systemType
+      };
+      setSiteSetup(setup);
       history.push({
         pathname: '/solar-analysis',
-        state: {
-          polygonGeoJson: polygonGeoJSON,
-          area_m2: estimatedArea,
-          latitude: lat,
-          longitude: lng,
-          systemConfig: {
-            panels,
-            watts: config.panelWattage // Use confirmed wattage
-          },
-          panelTechnology: config.panelTechnology,
-          gridType: config.gridType,
-          systemType: config.systemType
-        }
+        state: setup
       });
     } else if (pendingAnalysis.type === 'area') {
       const { lat, lng, area } = pendingAnalysis.data;
@@ -103,40 +107,44 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
       ];
       const polygonGeoJSON = getPolygonGeoJSON(syntheticPoints);
 
+      const setup: SiteSetup = {
+        polygonGeoJson: polygonGeoJSON,
+        area_m2: area,
+        latitude: lat,
+        longitude: lng,
+        systemConfig: {
+          panels: Math.floor(area / 2),
+          watts: config.panelWattage
+        },
+        panelTechnology: config.panelTechnology,
+        gridType: config.gridType,
+        systemType: config.systemType
+      };
+      setSiteSetup(setup);
       history.push({
         pathname: '/solar-analysis',
-        state: {
-          polygonGeoJson: polygonGeoJSON,
-          area_m2: area,
-          latitude: lat,
-          longitude: lng,
-          systemConfig: {
-            panels: Math.floor(area / 2), // Rough estimate
-            watts: config.panelWattage
-          },
-          panelTechnology: config.panelTechnology,
-          gridType: config.gridType,
-          systemType: config.systemType
-        }
+        state: setup
       });
     } else if (pendingAnalysis.type === 'globe') {
       const { polygonGeoJSON, area, lat, lng } = pendingAnalysis.data;
+      const setup: SiteSetup = {
+        polygonGeoJson: polygonGeoJSON,
+        area_m2: area,
+        latitude: lat,
+        longitude: lng,
+        method: 'Drawn on globe',
+        systemConfig: {
+          panels: Math.floor(area / 2),
+          watts: config.panelWattage
+        },
+        panelTechnology: config.panelTechnology,
+        gridType: config.gridType,
+        systemType: config.systemType
+      };
+      setSiteSetup(setup);
       history.push({
         pathname: '/solar-analysis',
-        state: {
-          polygonGeoJson: polygonGeoJSON,
-          area_m2: area,
-          latitude: lat,
-          longitude: lng,
-          method: 'Drawn on globe',
-          systemConfig: {
-            panels: Math.floor(area / 2),
-            watts: config.panelWattage
-          },
-          panelTechnology: config.panelTechnology,
-          gridType: config.gridType,
-          systemType: config.systemType
-        }
+        state: setup
       });
     }
   };

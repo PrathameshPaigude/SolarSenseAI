@@ -194,9 +194,14 @@ const PredictionPage: React.FC<PredictionPageProps> = ({ latestResult }) => {
             />
           </div>
 
-          <button className="ui-button secondary-button" onClick={() => history.push('/solar-analysis')}>
-            <FaArrowLeft /> Back to Analysis
-          </button>
+          <div className="button-group" style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+            <button className="ui-button secondary-button" onClick={() => history.push('/solar-analysis')}>
+              <FaArrowLeft /> Back to Analysis
+            </button>
+            <button className="ui-button primary-button" onClick={() => history.push('/dashboard')}>
+              Go to Dashboard
+            </button>
+          </div>
         </div>
 
         {/* Right: Results */}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FaHome, FaSun, FaChartLine, FaThLarge } from 'react-icons/fa';
+import { FaHome, FaSun, FaChartLine, FaThLarge, FaLeaf } from 'react-icons/fa';
 import './Sidebar.css';
 
 interface SidebarProps {
@@ -16,6 +16,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen = true, onClose }) => {
     { path: '/solar-analysis', label: 'Solar Analysis', icon: FaSun },
     { path: '/prediction', label: 'Prediction', icon: FaChartLine },
     { path: '/dashboard', label: 'Dashboard', icon: FaThLarge },
+    { path: '/carbon-credits', label: 'Carbon Credits', icon: FaLeaf },
   ];
 
   return (
