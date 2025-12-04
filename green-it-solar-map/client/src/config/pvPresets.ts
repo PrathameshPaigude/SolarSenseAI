@@ -5,6 +5,7 @@ export interface PVSystemPreset {
     azimuthDeg: number;
     moduleEff: number;
     performanceRatio: number;
+    packingFactor: number;
 }
 
 export const pvPresets: Record<string, PVSystemPreset> = {
@@ -13,31 +14,35 @@ export const pvPresets: Record<string, PVSystemPreset> = {
         kWp: 5,
         tiltDeg: 25,
         azimuthDeg: 180,
-        moduleEff: 0.18,
-        performanceRatio: 0.75,
+        moduleEff: 0.21,
+        performanceRatio: 0.80,
+        packingFactor: 0.9,
     },
     mediumCommercial: {
         label: "Medium size commercial",
         kWp: 100,
-        tiltDeg: 25,
+        tiltDeg: 10,
         azimuthDeg: 180,
-        moduleEff: 0.19,
-        performanceRatio: 0.80,
+        moduleEff: 0.21,
+        performanceRatio: 0.82,
+        packingFactor: 0.85,
     },
     groundMounted: {
         label: "Ground-mounted utility",
         kWp: 1000,
-        tiltDeg: 30, // Optimized tilt
+        tiltDeg: 30,
         azimuthDeg: 180,
-        moduleEff: 0.20,
-        performanceRatio: 0.82,
+        moduleEff: 0.22,
+        performanceRatio: 0.85,
+        packingFactor: 0.5,
     },
     floatingLargeScale: {
         label: "Floating large scale",
         kWp: 500,
-        tiltDeg: 15, // Lower tilt for stability
+        tiltDeg: 12,
         azimuthDeg: 180,
-        moduleEff: 0.19,
-        performanceRatio: 0.78,
+        moduleEff: 0.21,
+        performanceRatio: 0.82,
+        packingFactor: 0.7,
     },
 };

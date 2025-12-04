@@ -11,6 +11,7 @@ import {
 } from 'react-icons/fa';
 import { AnalysisResult } from '../App';
 import { safeComputeGeodesicAreaM2, validatePolygon, cesiumPositionsToLonLatRing } from '../utils/cesiumArea';
+import PVConfigModal, { PVConfig } from '../components/gis/PVConfigModal';
 import './HomePage.css';
 
 Ion.defaultAccessToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIxNDdiNWY1MC1hZDJhLTQ3NjItODIxOC03MmM1Mzk0MzNkNDUiLCJpZCI6MzQwMTEwLCJpYXQiOjE3NTc1MDc5MDR9.cyUvzRrufzlkzGqfd0miOY6y4CabqJ4Ob2o-0DG2slY";
@@ -49,6 +50,97 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
   const [drawnArea, setDrawnArea] = useState<number | null>(null);
   const analyzeButtonRef = useRef<HTMLDivElement>(null);
 
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [pendingAnalysis, setPendingAnalysis] = useState<{
+    type: 'quick' | 'area' | 'globe';
+    data: any;
+  } | null>(null);
+
+  const handleConfigConfirm = (config: PVConfig) => {
+    setIsModalOpen(false);
+    if (!pendingAnalysis) return;
+
+    if (pendingAnalysis.type === 'quick') {
+      const { lat, lng, panels, watts } = pendingAnalysis.data;
+      // Estimate area based on panels (approx 2m^2 per panel)
+      const estimatedArea = panels * 2;
+
+      // Create synthetic polygon
+      const delta = 0.0001;
+      const syntheticPoints = [
+        Cartesian3.fromDegrees(lng - delta, lat - delta),
+        Cartesian3.fromDegrees(lng + delta, lat - delta),
+        Cartesian3.fromDegrees(lng + delta, lat + delta),
+        Cartesian3.fromDegrees(lng - delta, lat + delta)
+      ];
+      const polygonGeoJSON = getPolygonGeoJSON(syntheticPoints);
+
+      history.push({
+        pathname: '/solar-analysis',
+        state: {
+          polygonGeoJson: polygonGeoJSON,
+          area_m2: estimatedArea,
+          latitude: lat,
+          longitude: lng,
+          systemConfig: {
+            panels,
+            watts: config.panelWattage // Use confirmed wattage
+          },
+          panelTechnology: config.panelTechnology,
+          gridType: config.gridType,
+          systemType: config.systemType
+        }
+      });
+    } else if (pendingAnalysis.type === 'area') {
+      const { lat, lng, area } = pendingAnalysis.data;
+      const delta = 0.0001;
+      const syntheticPoints = [
+        Cartesian3.fromDegrees(lng - delta, lat - delta),
+        Cartesian3.fromDegrees(lng + delta, lat - delta),
+        Cartesian3.fromDegrees(lng + delta, lat + delta),
+        Cartesian3.fromDegrees(lng - delta, lat + delta)
+      ];
+      const polygonGeoJSON = getPolygonGeoJSON(syntheticPoints);
+
+      history.push({
+        pathname: '/solar-analysis',
+        state: {
+          polygonGeoJson: polygonGeoJSON,
+          area_m2: area,
+          latitude: lat,
+          longitude: lng,
+          systemConfig: {
+            panels: Math.floor(area / 2), // Rough estimate
+            watts: config.panelWattage
+          },
+          panelTechnology: config.panelTechnology,
+          gridType: config.gridType,
+          systemType: config.systemType
+        }
+      });
+    } else if (pendingAnalysis.type === 'globe') {
+      const { polygonGeoJSON, area, lat, lng } = pendingAnalysis.data;
+      history.push({
+        pathname: '/solar-analysis',
+        state: {
+          polygonGeoJson: polygonGeoJSON,
+          area_m2: area,
+          latitude: lat,
+          longitude: lng,
+          method: 'Drawn on globe',
+          systemConfig: {
+            panels: Math.floor(area / 2),
+            watts: config.panelWattage
+          },
+          panelTechnology: config.panelTechnology,
+          gridType: config.gridType,
+          systemType: config.systemType
+        }
+      });
+    }
+  };
+
   // --- Cesium Logic ---
   useEffect(() => {
     if (activeMode === 'globe' && cesiumContainer.current && !viewer) {
@@ -68,22 +160,22 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
         // Performance optimizations
         newViewer.scene.fog.enabled = true;
         newViewer.scene.debugShowFramesPerSecond = false;
-        
+
         // Optimize rendering performance
         newViewer.scene.globe.enableLighting = false;
         newViewer.scene.globe.dynamicAtmosphereLighting = false;
         newViewer.scene.globe.dynamicAtmosphereLightingFromSun = false;
-        
+
         // Reduce terrain detail for better performance
-        newViewer.scene.globe.terrainExaggeration = 1.0;
-        
+        (newViewer.scene.globe as any).terrainExaggeration = 1.0;
+
         // Optimize camera movement
         newViewer.scene.screenSpaceCameraController.enableRotate = true;
         newViewer.scene.screenSpaceCameraController.enableTranslate = true;
         newViewer.scene.screenSpaceCameraController.enableZoom = true;
         newViewer.scene.screenSpaceCameraController.enableTilt = true;
         newViewer.scene.screenSpaceCameraController.enableLook = true;
-        
+
         // Set initial camera position to center on India
         newViewer.camera.setView({
           destination: Cartesian3.fromDegrees(77.2090, 20.5937, 20000000),
@@ -270,29 +362,11 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
     const panels = parseInt(panelCount);
     const watts = parseFloat(panelWattage);
 
-    // Estimate area based on panels (approx 2m^2 per panel)
-    const estimatedArea = panels * 2;
-
-    // Create synthetic polygon
-    const delta = 0.0001;
-    const syntheticPoints = [
-      Cartesian3.fromDegrees(lng - delta, lat - delta),
-      Cartesian3.fromDegrees(lng + delta, lat - delta),
-      Cartesian3.fromDegrees(lng + delta, lat + delta),
-      Cartesian3.fromDegrees(lng - delta, lat + delta)
-    ];
-    const polygonGeoJSON = getPolygonGeoJSON(syntheticPoints);
-
-    history.push({
-      pathname: '/solar-analysis',
-      state: {
-        polygonGeoJson: polygonGeoJSON,
-        area_m2: estimatedArea,
-        latitude: lat,
-        longitude: lng,
-        systemConfig: { panels, watts }
-      }
+    setPendingAnalysis({
+      type: 'quick',
+      data: { lat, lng, panels, watts }
     });
+    setIsModalOpen(true);
   };
 
   const handleAreaAnalysis = () => {
@@ -300,24 +374,11 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
     const lng = parseFloat(areaLng);
     const area = parseFloat(areaInput);
 
-    const delta = 0.0001; // This should ideally be scaled by area, but keeping simple for now
-    const syntheticPoints = [
-      Cartesian3.fromDegrees(lng - delta, lat - delta),
-      Cartesian3.fromDegrees(lng + delta, lat - delta),
-      Cartesian3.fromDegrees(lng + delta, lat + delta),
-      Cartesian3.fromDegrees(lng - delta, lat + delta)
-    ];
-    const polygonGeoJSON = getPolygonGeoJSON(syntheticPoints);
-
-    history.push({
-      pathname: '/solar-analysis',
-      state: {
-        polygonGeoJson: polygonGeoJSON,
-        area_m2: area,
-        latitude: lat,
-        longitude: lng
-      }
+    setPendingAnalysis({
+      type: 'area',
+      data: { lat, lng, area }
     });
+    setIsModalOpen(true);
   };
 
   const handleGlobeAnalysis = () => {
@@ -325,23 +386,22 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
     const polygonGeoJSON = getPolygonGeoJSON(polygonPoints);
 
     // Calculate centroid for lat/lon
-    // Simple average for now
     let sumLat = 0, sumLng = 0;
     const ring = cesiumPositionsToLonLatRing(polygonPoints);
     ring.forEach(p => { sumLng += p[0]; sumLat += p[1]; });
     const centerLat = sumLat / ring.length;
     const centerLng = sumLng / ring.length;
 
-    history.push({
-      pathname: '/solar-analysis',
-      state: {
-        polygonGeoJson: polygonGeoJSON,
-        area_m2: drawnArea,
-        latitude: centerLat,
-        longitude: centerLng,
-        method: 'Drawn on globe'
+    setPendingAnalysis({
+      type: 'globe',
+      data: {
+        polygonGeoJSON,
+        area: drawnArea,
+        lat: centerLat,
+        lng: centerLng
       }
     });
+    setIsModalOpen(true);
   };
 
   return (
@@ -555,6 +615,13 @@ const HomePage: React.FC<HomePageProps> = ({ onAnalysisComplete }) => {
           </div>
         )}
       </section>
+
+      <PVConfigModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onConfirm={handleConfigConfirm}
+        initialArea={pendingAnalysis?.type === 'area' ? pendingAnalysis.data.area : undefined}
+      />
     </div>
   );
 };

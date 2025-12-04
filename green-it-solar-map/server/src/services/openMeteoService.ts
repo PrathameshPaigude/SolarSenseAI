@@ -1,7 +1,7 @@
 import https from 'https';
 
 export class OpenMeteoService {
-  private readonly baseUrl = 'https://satellite-api.open-meteo.com/v1/archive';
+  private readonly baseUrl = 'https://api.open-meteo.com/v1/forecast';
 
   async getHourlySolarData(lat: number, lng: number, start?: string, end?: string): Promise<any> {
     // Default: today if not provided
@@ -15,16 +15,15 @@ export class OpenMeteoService {
       const params = new URLSearchParams({
         latitude: lat.toString(),
         longitude: lng.toString(),
-        hourly: 'shortwave_radiation,direct_radiation,shortwave_radiation_instant,direct_radiation_instant,global_tilted_irradiance_instant,terrestrial_radiation_instant,terrestrial_radiation,global_tilted_irradiance',
-        models: 'satellite_radiation_seamless',
+        hourly: 'shortwave_radiation,direct_radiation,diffuse_radiation,direct_normal_irradiance,global_tilted_irradiance',
         timezone: 'auto',
-        start: startDate,
-        end: endDate,
+        start_date: startDate,
+        end_date: endDate,
       });
 
       const url = `${this.baseUrl}?${params.toString()}`;
       console.log('OpenMeteoService: Fetching from:', url);
-      
+
       const data = await this.fetchUrl(url);
       console.log('OpenMeteoService: Received data successfully');
       return data;

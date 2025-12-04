@@ -4,8 +4,9 @@ import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler
 } from 'chart.js';
-import { FaRupeeSign, FaChartLine, FaLeaf, FaPiggyBank, FaArrowLeft } from 'react-icons/fa';
+import { FaRupeeSign, FaChartLine, FaLeaf, FaPiggyBank, FaArrowLeft, FaSync } from 'react-icons/fa';
 import { AnalysisResult } from '../App';
+import { computeFinancials, FinancialSummary, FinancialInputs } from '../services/api';
 import './PredictionPage.css';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
@@ -18,6 +19,8 @@ interface LocationState {
   pvOutputAnnual?: number; // kWh/year
   installedCapacity?: number; // kWp
   area?: number;
+  gridType?: "on_grid" | "hybrid" | "off_grid";
+  panelTechnology?: "mono" | "poly" | "thinfilm";
 }
 
 const PredictionPage: React.FC<PredictionPageProps> = ({ latestResult }) => {
@@ -31,63 +34,67 @@ const PredictionPage: React.FC<PredictionPageProps> = ({ latestResult }) => {
 
   // Financial Inputs State
   const [tariff, setTariff] = useState(8.5); // ₹/kWh
-  const [capexPerKw, setCapexPerKw] = useState(45000); // ₹/kWp
-  const [omCostPerKw, setOmCostPerKw] = useState(500); // ₹/kW/year
+  const [capexPerKw, setCapexPerKw] = useState<number | undefined>(undefined); // Leave undefined to use smart defaults
+  const [omCostPerKw, setOmCostPerKw] = useState(800); // ₹/kW/year
   const [lifetime, setLifetime] = useState(25); // years
-  const [inflation, setInflation] = useState(2); // % per year (tariff increase)
 
-  // Derived Metrics
-  const totalCapex = useMemo(() => initialCapacity * capexPerKw, [initialCapacity, capexPerKw]);
+  // Results State
+  const [summary, setSummary] = useState<FinancialSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const financialProjection = useMemo(() => {
-    let cumulativeCashflow = -totalCapex;
-    const cashflowData = [cumulativeCashflow];
-    const yearlySavingsData: number[] = [];
-    let paybackYear = -1;
-
-    for (let year = 1; year <= lifetime; year++) {
-      // Degrade output slightly (0.5% per year)
-      const output = initialAnnualOutput * Math.pow(0.995, year - 1);
-
-      // Increase tariff by inflation
-      const currentTariff = tariff * Math.pow(1 + inflation / 100, year - 1);
-
-      const savings = output * currentTariff;
-      const omCost = initialCapacity * omCostPerKw * Math.pow(1.03, year - 1); // 3% O&M inflation
-
-      const netSavings = savings - omCost;
-      cumulativeCashflow += netSavings;
-
-      cashflowData.push(cumulativeCashflow);
-      yearlySavingsData.push(netSavings);
-
-      if (paybackYear === -1 && cumulativeCashflow >= 0) {
-        paybackYear = year + (Math.abs(cashflowData[year - 1]) / netSavings); // Linear interpolation
-      }
+  // Debounce effect for recalculation
+  useEffect(() => {
+    if (initialAnnualOutput > 0 && initialCapacity > 0) {
+      const timer = setTimeout(() => {
+        runFinancialAnalysis();
+      }, 500); // 500ms debounce
+      return () => clearTimeout(timer);
     }
+  }, [tariff, capexPerKw, omCostPerKw, lifetime, initialAnnualOutput, initialCapacity]);
 
-    return {
-      cashflowData,
-      firstYearSavings: yearlySavingsData[0],
-      paybackYear,
-      totalSavings: cumulativeCashflow + totalCapex, // Net savings over lifetime
-      roi: ((cumulativeCashflow + totalCapex) / totalCapex) * 100
-    };
-  }, [initialAnnualOutput, initialCapacity, totalCapex, tariff, omCostPerKw, lifetime, inflation]);
+  const runFinancialAnalysis = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const inputs: FinancialInputs = {
+        systemSize_kWp: initialCapacity,
+        annualOutput_kWh: initialAnnualOutput,
+        gridType: state?.gridType,
+        panelTechnology: state?.panelTechnology,
+        tariff_Rs_per_kWh: tariff,
+        capex_Rs_per_kWp: capexPerKw, // If undefined, backend uses smart default
+        om_Rs_per_kWp_per_year: omCostPerKw,
+        projectLifetime_years: lifetime,
+      };
 
-  const chartData = {
-    labels: Array.from({ length: lifetime + 1 }, (_, i) => i.toString()),
-    datasets: [
-      {
-        label: 'Cumulative Cashflow (₹)',
-        data: financialProjection.cashflowData,
-        borderColor: '#4caf50',
-        backgroundColor: 'rgba(76, 175, 80, 0.1)',
-        fill: true,
-        tension: 0.4,
-      }
-    ]
+      const result = await computeFinancials(inputs);
+      setSummary(result);
+    } catch (err: any) {
+      console.error('Financial analysis failed:', err);
+      setError(err.message || 'Failed to compute financials');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  // Chart Data
+  const chartData = useMemo(() => {
+    if (!summary) return null;
+    return {
+      labels: summary.years.map(y => y.year.toString()),
+      datasets: [
+        {
+          label: 'Cumulative Cashflow (₹)',
+          data: summary.years.map(y => y.cumulativeCashflow_Rs),
+          borderColor: '#4caf50',
+          backgroundColor: 'rgba(76, 175, 80, 0.1)',
+          fill: true,
+          tension: 0.4,
+        }
+      ]
+    };
+  }, [summary]);
 
   const chartOptions = {
     responsive: true,
@@ -103,7 +110,7 @@ const PredictionPage: React.FC<PredictionPageProps> = ({ latestResult }) => {
     scales: {
       y: {
         ticks: {
-          callback: (value: any) => `₹${value / 1000}k`
+          callback: (value: any) => `₹${value / 100000}L`
         }
       },
       x: {
@@ -138,6 +145,12 @@ const PredictionPage: React.FC<PredictionPageProps> = ({ latestResult }) => {
               <span>Annual Output:</span>
               <span>{(initialAnnualOutput / 1000).toFixed(2)} MWh</span>
             </div>
+            {state?.gridType && (
+              <div className="summary-row">
+                <span>Grid Type:</span>
+                <span style={{ textTransform: 'capitalize' }}>{state.gridType.replace('_', ' ')}</span>
+              </div>
+            )}
           </div>
 
           <div className="input-group">
@@ -151,11 +164,16 @@ const PredictionPage: React.FC<PredictionPageProps> = ({ latestResult }) => {
 
           <div className="input-group">
             <label className="input-label">Installation Cost (₹/kWp)</label>
-            <input
-              type="number" className="input-field"
-              value={capexPerKw} onChange={e => setCapexPerKw(parseFloat(e.target.value))}
-              step="1000"
-            />
+            <div className="input-with-hint">
+              <input
+                type="number" className="input-field"
+                value={capexPerKw || ''}
+                placeholder={summary?.inputs.capex_Rs_per_kWp ? `Default: ${summary.inputs.capex_Rs_per_kWp.toLocaleString()}` : 'Auto-calculated'}
+                onChange={e => setCapexPerKw(e.target.value ? parseFloat(e.target.value) : undefined)}
+                step="1000"
+              />
+            </div>
+            <small className="input-hint">Leave empty to use smart default based on system type.</small>
           </div>
 
           <div className="input-group">
@@ -183,48 +201,56 @@ const PredictionPage: React.FC<PredictionPageProps> = ({ latestResult }) => {
 
         {/* Right: Results */}
         <div className="results-column">
-          <div className="metrics-grid">
-            <div className="metric-card">
-              <span className="metric-title">Total Investment</span>
-              <span className="metric-value">
-                ₹{(totalCapex / 100000).toFixed(2)} L
-              </span>
-              <span className="metric-sub">CAPEX</span>
-            </div>
+          {loading && !summary && <div className="loading-overlay"><FaSync className="fa-spin" /> Calculating...</div>}
 
-            <div className="metric-card highlight">
-              <span className="metric-title">Annual Savings</span>
-              <span className="metric-value">
-                ₹{financialProjection.firstYearSavings.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-              </span>
-              <span className="metric-sub">Year 1</span>
-            </div>
+          {error && <div className="error-message">{error}</div>}
 
-            <div className="metric-card">
-              <span className="metric-title">Payback Period</span>
-              <span className="metric-value">
-                {financialProjection.paybackYear > 0 ? financialProjection.paybackYear.toFixed(1) : '> ' + lifetime}
-              </span>
-              <span className="metric-sub">Years</span>
-            </div>
+          {summary && (
+            <>
+              <div className="metrics-grid">
+                <div className="metric-card">
+                  <span className="metric-title">Total Investment</span>
+                  <span className="metric-value">
+                    ₹{(summary.totalCapex_Rs / 100000).toFixed(2)} L
+                  </span>
+                  <span className="metric-sub">CAPEX</span>
+                </div>
 
-            <div className="metric-card">
-              <span className="metric-title">CO₂ Avoided</span>
-              <span className="metric-value">
-                {(initialAnnualOutput * 0.82 / 1000).toFixed(1)}
-              </span>
-              <span className="metric-sub">Tons / Year</span>
-            </div>
-          </div>
+                <div className="metric-card highlight">
+                  <span className="metric-title">Annual Savings</span>
+                  <span className="metric-value">
+                    ₹{summary.firstYearNetSavings_Rs.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+                  </span>
+                  <span className="metric-sub">Year 1</span>
+                </div>
 
-          <div className="chart-card">
-            <div className="chart-header">
-              <h3 className="chart-title"><FaChartLine /> Cashflow Projection</h3>
-            </div>
-            <div style={{ height: '320px' }}>
-              <Line data={chartData} options={chartOptions} />
-            </div>
-          </div>
+                <div className="metric-card">
+                  <span className="metric-title">Payback Period</span>
+                  <span className="metric-value">
+                    {summary.paybackYears ? summary.paybackYears.toFixed(1) : '> ' + lifetime}
+                  </span>
+                  <span className="metric-sub">Years</span>
+                </div>
+
+                <div className="metric-card">
+                  <span className="metric-title">CO₂ Avoided</span>
+                  <span className="metric-value">
+                    {summary.co2Avoided_tons_per_year.toFixed(1)}
+                  </span>
+                  <span className="metric-sub">Tons / Year</span>
+                </div>
+              </div>
+
+              <div className="chart-card">
+                <div className="chart-header">
+                  <h3 className="chart-title"><FaChartLine /> Cashflow Projection</h3>
+                </div>
+                <div style={{ height: '320px' }}>
+                  {chartData && <Line data={chartData} options={chartOptions} />}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
